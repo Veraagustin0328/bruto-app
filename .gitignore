@@ -1,0 +1,16 @@
+﻿# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Variables de entorno, NUNCA se suben
+.env
+
+# Node
+node_modules/
+dist/
+
+# Editor y sistema
+.vscode/
+.DS_Store
