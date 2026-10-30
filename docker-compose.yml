@@ -1,5 +1,6 @@
 ﻿# Postgres local para desarrollar, nada más
 # Levantalo con: docker compose up -d
+# Usa el 5433 afuera porque el 5432 lo tiene otro proyecto
 
 services:
   db:
@@ -10,7 +11,7 @@ services:
       POSTGRES_PASSWORD: bruto
       POSTGRES_DB: bruto
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - bruto_data:/var/lib/postgresql/data
 
