@@ -84,8 +84,9 @@ class Opcion(Base):
     precio_extra: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
 
     # Cuántas veces se puede pedir la misma opción.
-    # 1 = normal, None = las que quieran (el extra carne y queso)
-    cantidad_max: Mapped[int | None] = mapped_column(Integer, default=1)
+    # 1 = normal, None = las que quieran (el extra carne y queso).
+    # Sin default a propósito: si le pongo default=1, SQLAlchemy pisa el None
+    cantidad_max: Mapped[int | None] = mapped_column(Integer)
 
     disponible: Mapped[bool] = mapped_column(Boolean, default=True)
     orden: Mapped[int] = mapped_column(Integer, default=0)
