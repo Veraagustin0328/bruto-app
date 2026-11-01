@@ -1,6 +1,7 @@
 ﻿import enum
 from datetime import datetime
 from decimal import Decimal
+from uuid import uuid4
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -34,13 +35,24 @@ class EstadoPedido(str, enum.Enum):
     cancelado = "cancelado"
 
 
+def nuevo_codigo() -> str:
+    return uuid4().hex
+
+
 class Pedido(Base):
     __tablename__ = "pedidos"
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
+    # Código largo y random que usa el cliente para ver su pedido.
+    # No usamos el id porque cualquiera podría ir probando /pedidos/1, /2, /3...
+    # y ver nombre y teléfono de otra gente
+    codigo: Mapped[str] = mapped_column(
+        String(32), unique=True, index=True, default=nuevo_codigo
+    )
+
     # Número corto que ve el cliente y se grita en la cantina (#042).
-    # Lo asigna el service, se reinicia cada día
+    # Lo asigna el service, se reinicia en cada jornada
     numero: Mapped[int] = mapped_column(Integer, index=True)
 
     modo: Mapped[ModoPedido] = mapped_column(Enum(ModoPedido, native_enum=False))

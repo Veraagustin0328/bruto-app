@@ -14,7 +14,14 @@ class Settings(BaseSettings):
     mp_webhook_secret: str = ""
 
     frontend_url: str = "http://localhost:5173"
-    backend_url: str = "http://localhost:8000"
+    backend_url: str = "http://localhost:8001"
+
+    zona_horaria: str = "America/Argentina/Mendoza"
+
+    # La numeración de pedidos (#001, #002...) arranca de nuevo a esta hora.
+    # No es a las 00:00 porque la cantina cierra pasada la medianoche y
+    # no queremos que vuelva al #001 en medio del turno
+    hora_corte_jornada: int = 6
 
 
 settings = Settings()
