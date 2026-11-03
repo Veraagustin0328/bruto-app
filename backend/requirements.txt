@@ -6,5 +6,6 @@ alembic>=1.13
 pydantic-settings>=2.4
 pyjwt>=2.9
 bcrypt>=4.2
+python-multipart>=0.0.9
 mercadopago>=2.2
 tzdata>=2024.1
