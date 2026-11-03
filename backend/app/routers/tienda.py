@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, status
+﻿from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -7,6 +7,7 @@ from app.models import Categoria, GrupoOpciones, Producto
 from app.schemas.catalogo import CategoriaOut
 from app.schemas.pedido import PedidoNuevo, PedidoOut
 from app.services.pedidos import PedidoInvalido, buscar_por_codigo, crear_pedido
+from app.ws import avisar_pedido
 
 # Todo lo de acá es público: lo usa el cliente desde el celu, sin login
 router = APIRouter(prefix="/api/tienda", tags=["Tienda"])
@@ -39,11 +40,14 @@ def ver_menu(db: Session = Depends(get_db)):
 
 
 @router.post("/pedidos", response_model=PedidoOut, status_code=status.HTTP_201_CREATED)
-def hacer_pedido(datos: PedidoNuevo, db: Session = Depends(get_db)):
+def hacer_pedido(datos: PedidoNuevo, avisos: BackgroundTasks, db: Session = Depends(get_db)):
     try:
         pedido = crear_pedido(db, datos)
     except PedidoInvalido as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    # Le cae al panel de la cantina al toque, sin que nadie recargue
+    avisos.add_task(avisar_pedido, pedido.id, "pedido_nuevo")
 
     # Recargo con items y opciones para devolverlo completo
     return buscar_por_codigo(db, pedido.codigo)

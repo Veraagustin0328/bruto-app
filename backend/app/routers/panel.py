@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, Query, status
+﻿from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -7,6 +7,7 @@ from app.models import EstadoPedido, Pedido, Rol, Usuario
 from app.schemas.panel import CambioEstado, PedidoPanelOut, ResumenDia
 from app.services import panel as srv
 from app.services.pedidos import PedidoInvalido
+from app.ws import avisar_pedido
 
 router = APIRouter(prefix="/api/panel", tags=["Panel de la cantina"])
 
@@ -54,36 +55,46 @@ def ver_pedido(pedido: Pedido = Depends(traer_pedido), _: Usuario = Depends(cant
 @router.patch("/pedidos/{pedido_id}/estado", response_model=PedidoPanelOut)
 def cambiar_estado(
     cambio: CambioEstado,
+    avisos: BackgroundTasks,
     pedido: Pedido = Depends(traer_pedido),
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(cantina_o_cocina),
 ):
     try:
-        return srv.cambiar_estado(db, pedido, cambio.estado, usuario)
+        actualizado = srv.cambiar_estado(db, pedido, cambio.estado, usuario)
     except PedidoInvalido as e:
         raise a_400(e)
+    # La cocina marca "listo" y la cantina y el celu del cliente lo ven al toque
+    avisos.add_task(avisar_pedido, actualizado.id, "pedido_actualizado")
+    return actualizado
 
 
 @router.post("/pedidos/{pedido_id}/cobrar", response_model=PedidoPanelOut)
 def cobrar(
+    avisos: BackgroundTasks,
     pedido: Pedido = Depends(traer_pedido),
     db: Session = Depends(get_db),
     _: Usuario = Depends(cantina),
 ):
     # Marca como cobrado un pedido en efectivo
     try:
-        return srv.cobrar_efectivo(db, pedido)
+        actualizado = srv.cobrar_efectivo(db, pedido)
     except PedidoInvalido as e:
         raise a_400(e)
+    avisos.add_task(avisar_pedido, actualizado.id, "pedido_actualizado")
+    return actualizado
 
 
 @router.post("/pedidos/{pedido_id}/reimprimir", response_model=PedidoPanelOut)
 def reimprimir(
+    avisos: BackgroundTasks,
     pedido: Pedido = Depends(traer_pedido),
     db: Session = Depends(get_db),
     _: Usuario = Depends(cantina),
 ):
     try:
-        return srv.pedir_reimpresion(db, pedido)
+        actualizado = srv.pedir_reimpresion(db, pedido)
     except PedidoInvalido as e:
         raise a_400(e)
+    avisos.add_task(avisar_pedido, actualizado.id, "pedido_actualizado")
+    return actualizado

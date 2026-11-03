@@ -1,6 +1,7 @@
 ﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app import ws
 from app.config import settings
 from app.routers import auth, panel, tienda
 
@@ -19,6 +20,7 @@ app.add_middleware(
 app.include_router(tienda.router)
 app.include_router(auth.router)
 app.include_router(panel.router)
+app.include_router(ws.router)
 
 
 @app.get("/api/salud", tags=["Sistema"])
