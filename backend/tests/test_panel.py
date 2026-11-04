@@ -41,6 +41,8 @@ def test_pedido_que_no_existe(client, cantina, carta):
 
 
 def test_camino_feliz(client, cantina, pedido):
+    # Desde B1 hay que cobrarlo antes de entregarlo
+    client.post(f"/api/panel/pedidos/{pedido}/cobrar", headers=headers(cantina))
     for nuevo in ["en_preparacion", "listo", "entregado"]:
         r = estado(client, pedido, nuevo, cantina)
         assert r.status_code == 200, r.text

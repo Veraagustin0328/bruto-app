@@ -40,11 +40,22 @@ NOMBRES = {
 }
 
 
+AVISO_DEVOLVER_MP = "Acordate de devolver el pago desde Mercado Pago"
+
+
+class SinPermiso(PedidoInvalido):
+    """El usuario no puede hacer esto por su rol (va como 403)."""
+
+
 def _con_items():
     return selectinload(Pedido.items).selectinload(PedidoItem.opciones)
 
 
-def pedidos_de_la_jornada(db: Session, estados: list[EstadoPedido] | None = None) -> list[Pedido]:
+def pedidos_de_la_jornada(
+    db: Session,
+    estados: list[EstadoPedido] | None = None,
+    sin_pendientes_de_pago: bool = False,
+) -> list[Pedido]:
     consulta = (
         select(Pedido)
         .where(Pedido.created_at >= inicio_jornada())
@@ -53,7 +64,14 @@ def pedidos_de_la_jornada(db: Session, estados: list[EstadoPedido] | None = None
     )
     if estados:
         consulta = consulta.where(Pedido.estado.in_(estados))
+    if sin_pendientes_de_pago:
+        # La cocina no tiene que ver lo que todavía no se pagó
+        consulta = consulta.where(Pedido.estado != E.pendiente_pago)
     return list(db.scalars(consulta))
+
+
+def es_mp_pagado(pedido: Pedido) -> bool:
+    return pedido.metodo_pago == MetodoPago.mercadopago and pedido.estado_pago == EstadoPago.aprobado
 
 
 def buscar(db: Session, pedido_id: int) -> Pedido | None:
@@ -71,20 +89,48 @@ def cambiar_estado(db: Session, pedido: Pedido, nuevo: EstadoPedido, usuario: Us
     if usuario.rol == Rol.cocina and (actual, nuevo) not in PERMITIDO_COCINA:
         raise PedidoInvalido("Desde la cocina solo se puede marcar en preparación o listo")
 
+    if (
+        nuevo == E.entregado
+        and pedido.metodo_pago == MetodoPago.efectivo
+        and pedido.estado_pago != EstadoPago.aprobado
+    ):
+        raise PedidoInvalido("Cobralo antes de marcarlo entregado")
+
+    # Si ya se pagó por MP, cancelar implica devolver la plata: eso lo decide Renzo
+    if nuevo == E.cancelado and es_mp_pagado(pedido) and usuario.rol != Rol.admin:
+        raise SinPermiso("Solo el admin puede cancelar un pedido ya pagado por Mercado Pago")
+
     pedido.estado = nuevo
     db.commit()
     return buscar(db, pedido.id)
 
 
-def cobrar_efectivo(db: Session, pedido: Pedido) -> Pedido:
+def _validar_cobro(pedido: Pedido):
     if pedido.metodo_pago != MetodoPago.efectivo:
         raise PedidoInvalido("Este pedido se paga por Mercado Pago, no se cobra en mano")
     if pedido.estado == E.cancelado:
         raise PedidoInvalido("El pedido está cancelado")
+
+
+def cobrar_efectivo(db: Session, pedido: Pedido) -> Pedido:
+    _validar_cobro(pedido)
     if pedido.estado_pago == EstadoPago.aprobado:
         raise PedidoInvalido("Este pedido ya estaba cobrado")
 
     pedido.estado_pago = EstadoPago.aprobado
+    db.commit()
+    return buscar(db, pedido.id)
+
+
+def cobrar_y_entregar(db: Session, pedido: Pedido, usuario: Usuario) -> Pedido:
+    # El botón del chico de la cantina: cobra y entrega en una. Si ya estaba
+    # cobrado, solo entrega. Valido todo antes de tocar nada
+    _validar_cobro(pedido)
+    if E.entregado not in TRANSICIONES[pedido.estado]:
+        raise PedidoInvalido(f"Un pedido {NOMBRES[pedido.estado]} no puede pasar a entregado")
+
+    pedido.estado_pago = EstadoPago.aprobado
+    pedido.estado = E.entregado
     db.commit()
     return buscar(db, pedido.id)
 

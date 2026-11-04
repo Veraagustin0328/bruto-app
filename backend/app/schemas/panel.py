@@ -30,6 +30,11 @@ class PedidoPanelOut(BaseModel):
     updated_at: datetime
 
 
+class PedidoConAviso(PedidoPanelOut):
+    # Para avisarle algo a quien hizo el cambio, ej: que devuelva la plata de MP
+    aviso: str | None = None
+
+
 class CambioEstado(BaseModel):
     estado: EstadoPedido
 

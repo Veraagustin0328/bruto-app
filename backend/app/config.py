@@ -1,9 +1,14 @@
-﻿from pydantic_settings import BaseSettings, SettingsConfigDict
+﻿from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# backend/.env, se corra desde donde se corra (uvicorn, alembic, scripts)
+ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 
 class Settings(BaseSettings):
     # Lee todo del .env, si falta algo obligatorio explota al arrancar (mejor así)
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=ENV_FILE, extra="ignore")
 
     database_url: str
 

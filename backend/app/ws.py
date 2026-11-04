@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.database import SessionLocal
-from app.models import Pedido, PedidoItem, Rol, Usuario
+from app.models import EstadoPedido, Pedido, PedidoItem, Rol, Usuario
 from app.schemas.panel import PedidoPanelOut
 from app.schemas.pedido import PedidoOut
 from app.security import leer_token
@@ -106,7 +106,8 @@ async def avisar_pedido(pedido_id: int, evento: str):
 
     Se llama como background task desde las rutas: primero se responde
     al que hizo el cambio y después se avisa a todos los demás.
-    evento: "pedido_nuevo" o "pedido_actualizado"
+    evento: "pedido_nuevo" o "pedido_actualizado". Cuando MP aprueba un pago
+    (pendiente_pago -> recibido) hay que mandar "pedido_nuevo", así suena en la cantina
     """
     with SessionLocal() as db:
         pedido = db.scalar(
@@ -119,6 +120,9 @@ async def avisar_pedido(pedido_id: int, evento: str):
         para_panel = PedidoPanelOut.model_validate(pedido).model_dump(mode="json")
         para_cliente = PedidoOut.model_validate(pedido).model_dump(mode="json")
         codigo = pedido.codigo
+        sin_pagar = pedido.estado == EstadoPedido.pendiente_pago
 
-    await salas.mandar("panel", {"evento": evento, "pedido": para_panel})
+    # Un pedido de MP sin pagar todavía no existe para la cantina ni la cocina
+    if not sin_pagar:
+        await salas.mandar("panel", {"evento": evento, "pedido": para_panel})
     await salas.mandar(f"pedido:{codigo}", {"evento": "pedido_actualizado", "pedido": para_cliente})
