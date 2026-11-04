@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import ws
 from app.config import settings
-from app.routers import auth, panel, tienda
+from app.routers import auth, pagos, panel, tienda
 
 app = FastAPI(title="BRUTO API", version="0.1.0")
 
@@ -20,6 +20,7 @@ app.add_middleware(
 app.include_router(tienda.router)
 app.include_router(auth.router)
 app.include_router(panel.router)
+app.include_router(pagos.router)
 app.include_router(ws.router)
 
 

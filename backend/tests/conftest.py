@@ -118,6 +118,19 @@ def cocina(db):
     return crear_usuario(db, Rol.cocina)
 
 
+@pytest.fixture
+def mp(monkeypatch):
+    # Mercado Pago simulado, con un token de prueba trucho
+    from app.config import settings
+    from app.services import pagos
+    from tests.mp_falso import MPFalso
+
+    falso = MPFalso()
+    monkeypatch.setattr(settings, "mp_access_token", "TEST-token-de-mentira")
+    monkeypatch.setattr(pagos, "cliente_mp", lambda: falso)
+    return falso
+
+
 def datos_pedido(db, metodo_pago="efectivo", items=None, **cambios) -> dict:
     # Un pedido típico: una Animal doble con 2 extra carne, para comer adentro
     if items is None:
