@@ -1,5 +1,5 @@
 ﻿from collections import defaultdict
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -36,7 +36,9 @@ def inicio_jornada(ahora: datetime | None = None) -> datetime:
     corte = datetime.combine(ahora.date(), time(settings.hora_corte_jornada), tzinfo=zona)
     if ahora < corte:
         corte -= timedelta(days=1)
-    return corte
+    # Lo devuelvo en UTC: en Postgres da igual, pero SQLite (los tests)
+    # compara las fechas como texto y sin esto se corre 3 horas
+    return corte.astimezone(timezone.utc)
 
 
 def siguiente_numero(db: Session) -> int:
