@@ -39,3 +39,12 @@ Estaban los dos archivos de `docs/mercadopago/`. Los copié a `app/services/pago
 3. En /docs: `POST /api/tienda/pedidos` con `"metodo_pago": "mercadopago"` → copiá el `codigo`. `POST /api/pagos/{codigo}/preferencia` → abrí `link_pago` en una ventana de incógnito y entrá con el usuario **comprador** de prueba.
 4. Tarjeta de prueba: Mastercard `5031 7557 3453 0604` o Visa `4509 9535 6623 3704`, CVV `123`, vencimiento `11/30`, DNI `12345678`. En "Nombre del titular" poné `APRO` para que se apruebe u `OTHE` para que se rechace.
 5. Volvé a /docs: `POST /api/pagos/{codigo}/verificar` → tiene que quedar `recibido` y `aprobado`. Con `python -m scripts.escuchar_panel` abierto vas a ver el `[pedido_nuevo]` recién ahí.
+
+## B3. Pedidos de MP que nadie pagó
+
+- `app/services/vencidos.py`: cada `segundos_entre_revisiones` (60) busca los `pendiente_pago` con más de `minutos_para_pagar` (30). A cada uno le pregunta a MP con `verificar_pedido`: si estaba pagado pasa a `recibido` (y al panel le llega `pedido_nuevo`); si no, se cancela (al celu le llega el cambio).
+- Arranca y se corta en el `lifespan` de `main.py`, con `asyncio` puro. La consulta a MP va en otro hilo (`asyncio.to_thread`) para no frenar los WebSockets.
+- Sin `MP_ACCESS_TOKEN` no hace nada. Si MP no responde, **no cancela** ese pedido y prueba en la próxima vuelta (decidí lo seguro: nunca cancelar algo que capaz se pagó).
+- Los dos números están en `config.py` y se pueden pisar desde el `.env` (`MINUTOS_PARA_PAGAR`, `SEGUNDOS_ENTRE_REVISIONES`).
+
+**Cómo probarlo sin esperar 30 minutos:** en `backend/.env` agregá `MINUTOS_PARA_PAGAR=1` (y el token de prueba de MP), reiniciá uvicorn, hacé un pedido con MP y no lo pagues. Al minuto o dos `GET /api/tienda/pedidos/{codigo}` te lo muestra `cancelado`. Para el caso "pagó y no llegó el aviso": creá la preferencia, pagala con la tarjeta `APRO` y **no** llames a `/verificar`; a los 1-2 minutos lo vas a ver `recibido` en el panel. Después sacá esa línea del `.env`.

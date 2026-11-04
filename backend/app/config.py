@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     # Minutos que tiene el cliente para pagar con MP. A esa altura vence el link
     # y la tarea de fondo cancela el pedido si nadie lo pagó
     minutos_para_pagar: int = 30
+    # Cada cuánto se fija si hay pedidos de MP vencidos
+    segundos_entre_revisiones: int = 60
 
     frontend_url: str = "http://localhost:5173"
     backend_url: str = "http://localhost:8001"
