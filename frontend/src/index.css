@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+/* Colores y letras de la marca. Bebas Neue y Poppins hasta tener Bradley y Made Tommy */
+@theme {
+  --color-naranja: #f05c2b;
+  --color-negro: #0b0a09;
+  --color-carbon: #161413;
+  --color-gris: #26221f;
+  --color-linea: #3a3430;
+  --color-texto: #f5f1ed;
+  --color-tenue: #a69c95;
+  --color-ok: #3dbe7a;
+  --color-alerta: #f2b33d;
+  --color-mp: #009ee3;
+
+  --font-display: "Bebas Neue", "Oswald", Impact, "Arial Narrow", sans-serif;
+  --font-sans: "Poppins", "Segoe UI", system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  @apply bg-negro text-texto font-sans antialiased;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3,
+.titulo {
+  @apply font-display font-normal;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Botones y campos: que se note el foco con teclado */
+:focus-visible {
+  outline: 2px solid var(--color-naranja);
+  outline-offset: 2px;
+}
+
+.sin-scrollbar {
+  scrollbar-width: none;
+}
+.sin-scrollbar::-webkit-scrollbar {
+  display: none;
+}
