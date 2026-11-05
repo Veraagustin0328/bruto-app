@@ -113,3 +113,89 @@ Rutas nuevas en `app/routers/carta.py` (`/api/carta`), lógica en `app/services/
 - Sumé `backend/uploads/` al `.gitignore`.
 - Arreglo de paso: en Windows Python no conocía el tipo `.webp` y servía las fotos como "archivo para bajar". Lo registro en `main.py`.
 - Avisa `carta_actualizada` al panel.
+
+---
+
+# Resumen final
+
+## Pasos
+
+| Paso | Estado | Commit |
+|---|---|---|
+| Tests de lo que ya andaba | Hecho | `aed8da6` |
+| B1. Arreglos de la revisión | Hecho | `deb0dcd` |
+| B2. Mercado Pago | Hecho (probado con MP simulado) | `e9554f1` |
+| B3. Cancelar pedidos de MP sin pagar | Hecho | `c7d8d35` |
+| B4. Protección contra abusos | Hecho | `081e9bf` |
+| B5. Carta y precios | Hecho | `e73ff53` |
+| B6. Ticketera | Hecho | `77774b6` |
+| B7. Horario y configuración | Hecho | `7311837` |
+| B8. Fotos | Hecho (storage externo pendiente para producción) | `ab0695a` |
+| B9. Tests | Hecho: están todos los casos de la lista | — |
+
+No quedó ningún paso trabado.
+
+## Tests
+
+**256 tests, pasan todos** (unos 25 segundos). Para correrlos (PowerShell):
+
+```powershell
+cd C:\Users\veraa\bruto-app\backend
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt   # suma pytest, httpx y pillow
+python -m pytest
+```
+
+Usan SQLite en memoria y una carpeta temporal para las fotos: no tocan Docker, ni el `.env`, ni `backend/uploads`.
+
+## Decisiones que tomé yo (detalle en cada paso de arriba)
+
+- `inicio_jornada()` devuelve UTC (misma hora, para que SQLite compare bien).
+- B1: el aviso de "devolver el pago" va en un campo `aviso` de la respuesta. `cobrar-y-entregar` solo desde `listo`.
+- B2: el tiempo para pagar pasó a `config.py`. Log si pagan un pedido ya cancelado.
+- B3: si MP no responde, no cancelo.
+- B4: 429 para todos los límites; IP = la última de `X-Forwarded-For`; los fallidos con emails que no existen también bloquean.
+- B5: seguí sin esperar el OK de los schemas. La cantina puede **ver** la carta. Disponibilidad con valor explícito, no toggle. Redondeo al más cercano. Se puede bajar precios (hasta -50 %).
+- B6: rol nuevo `impresora` + WebSocket `/ws/impresion`.
+- B7: dos mensajes (cerrado y pausado). Sin horarios cargados = abierto.
+- B8: Pillow; fotos en `backend/uploads` detrás de `app/storage.py`.
+
+## Lo que tenés que probar a mano
+
+1. Aplicar las migraciones en tu Postgres (abajo) y levantar uvicorn. Mirar que `/docs` muestre las secciones nuevas: Carta y precios, Ticketera, Configuración, Mercado Pago.
+2. **Mercado Pago con credenciales de prueba** (pasos en B2): pago aprobado (`APRO`), rechazado (`OTHE`) y uno que no pagues con `MINUTOS_PARA_PAGAR=1` para ver que se cancela solo (B3).
+3. **Horario:** `GET /api/tienda/estado` a distintas horas. Ojo: fuera de 18:00 a 00:30 **la tienda ya no acepta pedidos**. Para probar de día cambiá el horario con `PUT /api/config/horarios` (o pausá/despausá con `PATCH /api/config`).
+4. **Límites:** 6 pedidos seguidos desde /docs → el 6.º da 429. 5 claves mal en el login → bloqueado 15 min (si te bloqueás vos, reiniciá uvicorn y se limpia).
+5. **Carta:** vista previa de +10 % a Smash Burgers con redondeo 500 y compararla con la maqueta; aplicarla y ver que un pedido viejo no cambió.
+6. **Fotos:** subir una foto desde `/docs` y abrir el `imagen_url` en el navegador.
+7. Crear un usuario rol `impresora` y probar `/api/impresion/pendientes`.
+
+## Lo que hay que pedirle a Renzo (además de lo que ya estaba en el CLAUDE.md)
+
+- **Horario real** de la cantina por día (quedó todos los días de 18:00 a 00:30) y si algún día no abre.
+- **Link de la tienda en PedidosYa.**
+- **Cuenta de Mercado Pago de producción** (para el `MP_ACCESS_TOKEN` y la clave secreta del webhook).
+- Si los chicos de la cantina tienen que poder **pausar los pedidos** sin él (hoy solo admin).
+- **Fotos de los productos.**
+- Datos de la ticketera (para el print-agent).
+- Y para producción, elegir un storage para las fotos (Cloudinary tiene plan gratis y alcanza).
+
+## Migraciones nuevas en tu base de Docker
+
+Hay dos: `b886e8d1f535` (rol impresora) y `2ff116c7dfc0` (horario y configuración, con los valores iniciales). No borran nada. En PowerShell:
+
+```powershell
+cd C:\Users\veraa\bruto-app
+git checkout backend-pendientes
+docker compose up -d
+cd backend
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+alembic current            # tendría que decir 3edc39188607
+alembic upgrade head
+alembic current            # ahora 2ff116c7dfc0 (head)
+uvicorn app.main:app --reload --port 8001
+```
+
+Si querés ver el SQL antes de aplicarlo: `alembic upgrade 3edc39188607:head --sql`.
+Para volver atrás: `alembic downgrade 3edc39188607` (borra las tablas de horario y configuración; los usuarios impresora pasan a cocina dados de baja).
