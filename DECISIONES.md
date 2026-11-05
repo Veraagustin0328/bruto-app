@@ -58,3 +58,20 @@ Estaban los dos archivos de `docs/mercadopago/`. Los copié a `app/services/pago
 - **IP detrás de Railway:** tomo la **última** IP de `X-Forwarded-For` (la que agrega el proxy). Las anteriores las puede inventar cualquiera mandando el header, y con eso se salteaba el límite. Si no hay header, uso la IP de la conexión. Si algún día hay dos proxies adelante (ej. Cloudflare + Railway), hay que revisar esto.
 - Usé 429 (Too Many Requests) para todos.
 - Tests: el hash de la clave en los tests usa 4 rondas de bcrypt para que corran rápido (la app sigue usando las 12 por defecto).
+
+## B5. Carta y precios para Renzo
+
+La tarea pedía mostrar los schemas y esperar el sí. Como no estabas, seguí con los schemas de `app/schemas/carta.py` (lo más parecido a lo que ya había en `schemas/catalogo.py` y `usuario.py`). Si querés cambiar algo, se cambia ahí sin tocar la lógica.
+
+Rutas nuevas en `app/routers/carta.py` (`/api/carta`), lógica en `app/services/carta.py`:
+- `GET /api/carta`: todo, con inactivas, no visibles y opciones apagadas. **Decidí que también la vea la cantina** (solo leer), porque para prender y apagar necesita la lista.
+- ABM: `POST/PATCH/DELETE` de `categorias`, `productos`, `productos/{id}/grupos` + `grupos/{id}`, `grupos/{id}/opciones` + `opciones/{id}`. Lo nuevo va al final del orden. En los PATCH se cambia solo lo que viene; `cantidad_max` y `max_selecciones` en `null` quieren decir "sin tope", y `descripcion`/`etiqueta` en `null` se borran.
+- No se puede borrar una categoría con productos (409): hay que moverlos o desactivarla. Borrar un producto no rompe pedidos viejos (tienen todo copiado); igual, lo más seguro para Renzo es ponerlo `visible: false`.
+- Orden: `PUT /api/carta/categorias/orden` y `PUT /api/carta/categorias/{id}/orden-productos`, con `{"ids": [...]}`. Tienen que venir todos los ids, sin repetir (si no, 400).
+- Prender/apagar: `PATCH /api/carta/productos/{id}/disponible` y `PATCH /api/carta/opciones/{id}/disponible` con `{"disponible": false}`. Admin y cantina. **Decidí mandar el valor y no un "toggle"**: si dos celus de la cantina tocan a la vez, con toggle se pisan y queda al revés.
+- Aumento: `POST /api/carta/aumento/vista-previa` (no guarda) y `POST /api/carta/aumento/aplicar`. Body: `aplica_a` (`todo`, `categoria` + `categoria_id`, o `productos` + `producto_ids`), `porcentaje` (de -50 a 200, se puede bajar) y `redondeo` (100, 500 o 1000). Redondea al múltiplo **más cercano** (13.750 → 14.000), así dan exactos los números de la maqueta.
+  - **El doble:** en los grupos de opción única (Tamaño: Simple/Doble) redondeo el precio final (simple + extra) y el extra nuevo es la resta con el simple nuevo (nunca menor a 0). En los agregados (grupos múltiples, ej. Extra carne y queso) redondeo el extra directo. Las opciones de $0 no se tocan.
+  - "Aplicar" usa el mismo cálculo que la vista previa, así lo que ve Renzo es lo que se guarda.
+  - `cantidad_precios` cuenta cada opción por separado: en la maqueta dice "10 precios" porque muestra una sola fila de Extra carne, pero en la base hay una por burger (14 en total).
+- Cada cambio (no la vista previa) manda `{"evento": "carta_actualizada"}` a la sala "panel".
+- Los pedidos ya hechos no cambian (tienen el precio copiado). Hay test.

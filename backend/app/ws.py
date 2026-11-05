@@ -126,3 +126,8 @@ async def avisar_pedido(pedido_id: int, evento: str):
     if not sin_pagar:
         await salas.mandar("panel", {"evento": evento, "pedido": para_panel})
     await salas.mandar(f"pedido:{codigo}", {"evento": "pedido_actualizado", "pedido": para_cliente})
+
+
+async def avisar_carta():
+    # Cambió algo de la carta (precio, stock, producto nuevo): la cantina la recarga
+    await salas.mandar("panel", {"evento": "carta_actualizada"})
