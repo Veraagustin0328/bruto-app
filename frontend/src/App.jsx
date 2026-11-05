@@ -4,7 +4,8 @@ import { CarritoProvider } from "./tienda/carrito";
 import Seguimiento from "./tienda/Seguimiento";
 import Login from "./panel/Login";
 import Panel from "./panel/Panel";
-import { ROLES_PANEL, RutaProtegida } from "./panel/sesion";
+import Cocina from "./panel/Cocina";
+import { ROLES_COCINA, ROLES_PANEL, RutaProtegida } from "./panel/sesion";
 
 // Por ahora cada ruta muestra su nombre, para ver que el router anda
 function Provisoria({ nombre }) {
@@ -32,7 +33,10 @@ export default function App() {
         path="/panel"
         element={<RutaProtegida roles={ROLES_PANEL}>{(sesion) => <Panel sesion={sesion} />}</RutaProtegida>}
       />
-      <Route path="/cocina" element={<Provisoria nombre="Cocina" />} />
+      <Route
+        path="/cocina"
+        element={<RutaProtegida roles={ROLES_COCINA}>{(sesion) => <Cocina sesion={sesion} />}</RutaProtegida>}
+      />
       <Route path="*" element={<Provisoria nombre="No existe esta página" />} />
     </Routes>
   );
