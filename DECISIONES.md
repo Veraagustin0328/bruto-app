@@ -199,3 +199,142 @@ uvicorn app.main:app --reload --port 8001
 
 Si querés ver el SQL antes de aplicarlo: `alembic upgrade 3edc39188607:head --sql`.
 Para volver atrás: `alembic downgrade 3edc39188607` (borra las tablas de horario y configuración; los usuarios impresora pasan a cocina dados de baja).
+
+---
+
+# Frontend (Tarea 2)
+
+Todo en la rama `frontend`, creada desde `main` (el backend ya estaba mergeado; `backend-pendientes` y `main` eran iguales). No se tocó el backend, ni el `.env`, ni la base de Docker. No hubo push ni deploy.
+
+## Pantallas
+
+| Paso | Estado | Commit |
+|---|---|---|
+| 1. Crear el frontend (Vite + React Router + Tailwind, `api.js`) | Hecho | `bf1b783` |
+| 2. Tienda: la carta | Hecho | `ac5b902` |
+| 3. Armar el producto y carrito | Hecho | `d740cca` |
+| 4. Dónde comés, datos y pago | Hecho | `2c4bb8c` |
+| 5. Seguimiento del pedido | Hecho | `27808a0` |
+| 6. Intro del paletazo | Hecho | `6d51572` |
+| 7. Login y panel de la cantina | Hecho | `d19929f` |
+| 8. Cocina | Hecho | `5f7524f` |
+| 9. Agente de la ticketera (simulado) | Hecho | `dcccfba` |
+| 10. Revisión | Hecha, la lista está abajo (sin arreglar) | este commit |
+
+No quedó ningún paso trabado. No están hechas (no eran parte de la tarea): las pestañas "Carta y precios" y "Caja del día" del panel que aparecen en la maqueta. El backend ya tiene las rutas de B5 para la primera.
+
+Cada paso se probó con `npm run build` sin errores y en Chrome (Playwright) a 390 px y 1280 px contra el backend de verdad (uvicorn en el 8001). Usé una base SQLite aparte y un Mercado Pago de mentira que armé en una carpeta temporal (no están en el repo). Lo que se probó: carta, chips, esqueleto y error con reintento; armar la Animal doble con 2 extras y nota ($20.000, igual que la maqueta) y que no deje agregar sin tamaño; carrito que sobrevive a recargar; checkout con `?donde=Cancha 3`; pedido en efectivo y con MP (aprobado, rechazado, y rechazado → vuelve a pagar → aprobado); seguimiento en vivo por WebSocket; take away listo; login con clave mal y bien; panel recibiendo pedidos en vivo y los botones; cocina; ticketera con un pedido nuevo y con reimprimir. También pasé por todas las pantallas a 360 px (ninguna se desborda a lo ancho).
+
+## Decisiones que tomé yo
+
+**General**
+- Tailwind 4: los colores y fuentes de la marca están en `src/index.css` (bloque `@theme`), no hay `tailwind.config.js`. Las clases son tipo `bg-naranja`, `text-tenue`, `font-display`.
+- React 19, React Router 7, Vite 8. JavaScript, sin TypeScript. Ninguna librería de componentes ni de animación.
+- `api.js` tiene todas las llamadas. Si no hay `VITE_API_URL` usa `http://localhost:8001`. Los errores de validación de FastAPI (422, en inglés) se pasan a castellano; los `detail` que ya vienen en texto se muestran tal cual. Sin conexión dice "No pudimos conectarnos. Revisá tu conexión y probá de nuevo".
+- `src/lib/almacen.js`: todo el localStorage y sessionStorage va con try/catch.
+- Fechas: si alguna viene sin zona horaria la tomo como UTC (`formato.fecha`). Con Postgres siempre vienen con zona; con SQLite no, y los "hace X min" daban mal.
+
+**Tienda**
+- El checkout no es otra ruta: es `/` con `?paso=pedido` y `?paso=datos`. Así el botón "atrás" del celu anda y el `?donde=` del QR no se pierde.
+- En la hoja del producto **el tamaño no viene elegido**: el cliente elige simple o doble a propósito (el botón dice "ELEGÍ TAMAÑO" hasta que elija). Sumé un stepper de cantidad al lado de "Agregar".
+- Opciones múltiples: stepper si `cantidad_max` es null o mayor a 1 (tope 10, lo que acepta el backend); tilde si es 1. Respeta `max_selecciones`.
+- Si agregás dos veces lo mismo (mismas opciones y nota) se suma la cantidad. El carrito se tira solo a las 6 horas.
+- "¿Cómo pagás?" arranca con Mercado Pago elegido, como en la maqueta.
+- Delivery: usa el `link_delivery` del backend (B7) si está cargado; si no, el de `src/config.js` (vacío, con TODO). Sin link muestra "Muy pronto".
+- Los botones Cancha 1 a 4 están en `src/config.js` (`CANCHAS`).
+- Si MP no responde al crear el link de pago, el pedido ya existe: lo mando al seguimiento, que tiene el botón "Pagar con Mercado Pago" para reintentar.
+- Seguimiento: si el pedido está en `pendiente_pago`, al entrar siempre verifica (aunque antes lo hayan rechazado, porque capaz volvió a pagar). Cada 5 s, hasta 2 min. Después muestra "Pagar" y "Ya pagué, revisar de nuevo".
+- Arriba de la carta aparece "Tu pedido #042 está en la plancha · Ver mi pedido", solo si el último pedido es de las últimas 12 hs y sigue en curso.
+- Intro: la escena de la maqueta (280 × 600) se escala para entrar en la pantalla, así las posiciones quedan idénticas. Dura unos 3,7 s y se va con un fade. Si vino del QR dice "Estás en Cancha 3". No sale si entra directo al checkout.
+
+**Panel y cocina**
+- Botones por estado: Nuevos → "A la cocina"; En preparación → "Listo"; Listos → "Entregado", o "Cobrar $X y entregar" si es efectivo sin cobrar (usa `cobrar-y-entregar` de B1, porque el backend no deja entregar sin cobrar). "Cobrar" suelto en los otros estados. "Reimprimir" y "Cancelar" (con confirmación dentro de la tarjeta) en todos.
+- El aviso "Acordate de devolver el pago desde Mercado Pago" sale como cartel abajo durante 9 segundos.
+- "Hace X min" se pone amarillo a los 15 min en el panel; en la cocina el reloj, a los 12, como pide la tarea.
+- Sonido con Web Audio (sin archivos). Arriba hay una barra "Tocá acá para activar el sonido" hasta que alguien toque la pantalla.
+- La lista se recarga entera al reconectar el WebSocket y cada 2 minutos, por las dudas.
+- Login: después de entrar va a donde quería ir; si no, la cocina va a `/cocina` y el resto a `/panel`. El rol `impresora` no entra. El admin entra a todo; la cocina también la puede abrir la cantina.
+- En la cocina, en lugar de "Promedio hoy" (ese dato no está en el backend) puse la hora.
+
+**Ticketera (print-agent)**
+- La tarea decía "se loguea con un usuario de la cantina y se conecta a /ws/panel", pero también "usá las rutas de B6". B6 armó un rol `impresora` que **no** entra a `/ws/panel`. Usé lo de B6: usuario `impresora`, `WS /ws/impresion`, `GET /api/impresion/pendientes` y `POST /api/impresion/pedidos/{id}/impreso`.
+- El usuario y la clave van en `print-agent/config.env` (está en el `.gitignore`; hay un `config.ejemplo.env`).
+- Para que un pedido no salga dos veces si llega por el WebSocket y por la consulta a la vez, me acuerdo de `(id, updated_at)`. Un "reimprimir" cambia el `updated_at`, así que ese sí sale de nuevo.
+- Hora de Mendoza fija en UTC-3 (Argentina no cambia la hora), así no hace falta instalar `tzdata` en Windows.
+- La impresión está toda en `impresora.py`, en `imprimir()`. Ahí hay un ejemplo de cómo queda con python-escpos.
+
+## Cómo levantar todo (PowerShell)
+
+```powershell
+# 1. Base y backend (como siempre)
+cd C:\Users\veraa\bruto-app
+git checkout frontend
+docker compose up -d
+cd backend
+.\venv\Scripts\Activate.ps1
+alembic upgrade head          # si todavía no aplicaste las de B6 y B7
+uvicorn app.main:app --reload --port 8001
+
+# 2. El front (otra terminal)
+cd C:\Users\veraa\bruto-app\frontend
+npm install
+npm run dev                   # http://localhost:5173
+
+# 3. La ticketera (otra terminal, opcional)
+cd C:\Users\veraa\bruto-app\print-agent
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item config.ejemplo.env config.env   # completá email y clave de un usuario impresora
+python agente.py
+```
+
+- Usuarios: en http://localhost:8001/docs, con Authorize como admin, `POST /api/auth/usuarios` con rol `cantina`, `cocina` e `impresora`.
+- **Ojo con el horario:** la tienda solo acepta pedidos de 18:00 a 00:30. Si probás de día, cambiá el horario con `PUT /api/config/horarios`, si no vas a ver "cerrado" al confirmar.
+- Pantallas: `/` la tienda, `/?donde=Cancha 3` como si viniera del QR, `/pedido/<codigo>` el seguimiento, `/panel/login`, `/panel` y `/cocina`.
+- La intro se guarda en sessionStorage: para verla de nuevo cerrá la pestaña o abrí una de incógnito.
+- `npm run build` deja todo listo en `frontend/dist`.
+
+**Para probar desde el celu en la misma wifi** hace falta: (1) `uvicorn ... --host 0.0.0.0`, (2) `npm run dev -- --host`, (3) crear `frontend/.env.local` con `VITE_API_URL=http://<IP de la compu>:8001`, (4) en `backend/.env` poner `FRONTEND_URL=http://<IP de la compu>:5173` (por el CORS y la vuelta de MP; ese archivo lo tocás vos) y (5) permitir los dos puertos en el firewall de Windows. La vibración y que la pantalla de la cocina no se apague necesitan https (o localhost), así que en la wifi local no van a andar; en producción sí.
+
+## Qué probar a mano (sobre todo en el celu)
+
+1. La intro en celus de verdad (Android e iPhone): que se saltee con un toque y que con "reducir movimiento" vaya directo al logo.
+2. Escanear un QR con `?donde=Cancha 3` y ver que llegue elegido "Comer adentro" con la cancha.
+3. Que el teclado no tape el botón de "Continuar" o "Pagar" en el checkout, sobre todo en iPhone.
+4. Mercado Pago con credenciales de prueba (pasos en B2): tarjeta `APRO` y `OTHE`, volver a la app y ver "Confirmando tu pago..." y después el pedido recibido. Probar también volver de MP sin pagar.
+5. Take away listo: que vibre (en Android; el iPhone no tiene vibración desde la web) y que salga "¡Ya podés retirarlo!".
+6. Cerrar la tienda y volver a abrirla: tiene que aparecer "Ver mi pedido".
+7. Panel en la compu y en un celu del personal (con pestañas). Tocar la barra del sonido y hacer un pedido: tiene que sonar y brillar la tarjeta.
+8. Cortar el wifi de la compu del panel: tiene que salir la barra amarilla de reconexión y, al volver, traer lo que entró mientras tanto.
+9. Cocina en la tablet acostada: que se lea de lejos, reloj amarillo a los 12 min y que la pantalla no se apague (con https).
+10. La ticketera: dejar pedidos sin imprimir, arrancar el agente y ver que salgan; después "Reimprimir" desde el panel.
+
+## Revisión final (paso 10): problemas, de más grave a menos
+
+No arreglé ninguno, como pide la tarea.
+
+**Graves**
+1. **Pedido duplicado con mala señal.** Si el `POST /api/tienda/pedidos` llega al backend pero la respuesta no vuelve (señal mala en la cancha), el cliente ve "No pudimos conectarnos", vuelve a tocar y entra un segundo pedido. El botón está bloqueado mientras manda, pero falta una "llave" por intento. El arreglo de verdad es que el front mande un id random por intento y el backend no cree dos pedidos con el mismo (cambio de backend).
+2. **Posible doble pago en MP.** A los 2 minutos sin confirmación, el seguimiento ofrece "Pagar con Mercado Pago" de nuevo. Si el pago estaba aprobado pero MP tardó en avisar, el cliente puede pagar dos veces y hay que devolver uno a mano. Convendría esperar más, o mostrar primero solo "Ya pagué, revisar de nuevo".
+3. **Los pedidos que entran durante un corte del panel no suenan.** Al reconectar se recarga la lista y aparecen, pero sin sonido ni brillo. Un sábado con el wifi flojo pueden pasar desapercibidos en "Nuevos".
+
+**Medias**
+4. **El "atrás" del celu con la hoja del producto abierta** no la cierra: vuelve a la página anterior (y si entró por el QR, se sale de la tienda). El carrito no se pierde.
+5. **Se pierde lo que cargó en "Tu pedido"** (comer adentro o take away, y la ubicación) si toca "+ Agregar algo más" y vuelve, porque el checkout se arma de nuevo. Nombre, apellido y teléfono se recuerdan recién después del primer pedido.
+6. **Precios viejos en el carrito.** El carrito guarda el precio de cuando se agregó (hasta 6 hs). Si Renzo aplica un aumento en el medio, el total que ve el cliente no es el que cobra el backend, y se entera recién en Mercado Pago o en el seguimiento.
+7. **La vibración de "listo" puede no andar** si el cliente no tocó la pantalla del seguimiento (Chrome la bloquea hasta el primer toque, por ejemplo al volver de MP). En iPhone no existe. El cartel verde sale siempre.
+8. **Tienda cerrada:** se puede armar todo el pedido y recién al confirmar dice que está cerrada. Arriba se ve "Cantina cerrada" con el mensaje, pero no frena antes.
+9. **Producto que se apaga con el pedido en el carrito:** el error del backend ("X no está disponible ahora") sale en "Tus datos", pero para sacarlo hay que volver a "Tu pedido", y no se marca cuál es.
+10. **Token vencido en el panel:** el backend cierra el WebSocket antes de aceptarlo, el navegador lo toma como un corte común y sigue reconectando. El panel vuelve al login cuando falla otra llamada (el resumen, en menos de un minuto). Mientras tanto dice "Reconectando".
+
+**Leves**
+11. A 360 px, en el panel el logo queda cortado ("BRUT") por los botones de arriba; en la cocina el título "Cocina · N en marcha" ocupa tres renglones (la cocina está pensada para tablet).
+12. Sin indicador de carga: el resumen del panel muestra "–" hasta que llega, y el botón "Recargar" de la barra de conexión no muestra que está cargando.
+13. Errores que no se muestran: si falla `GET /api/tienda/estado` no se ve ni "abierta" ni "cerrada"; si falla el resumen del panel queda el dato viejo sin aviso.
+14. Desde la cocina no se puede deshacer un "Listo" tocado sin querer (el backend lo permite, falta el botón). Tampoco hay en el panel una vista de entregados y cancelados del día (`?todos=true`).
+15. "Ver mi pedido" muestra solo el último pedido; si hizo dos, el primero lo tiene que buscar con el link.
+16. En compu la intro se ve chica en el medio y las líneas de la cancha cortan a los costados (la escena es de celu).
+17. Textos: "Take away" y "Delivery" quedaron en inglés porque así están en la maqueta y en la carta. Todo lo demás está en castellano.
+
+Nota de las pruebas: las migraciones usan `now()` de Postgres, así que una base SQLite armada con `alembic upgrade` no deja crear pedidos. No afecta a Postgres ni a los tests (usan `create_all`). Para probar el front con SQLite armé la base con `create_all`.
