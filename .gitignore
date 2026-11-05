@@ -18,3 +18,7 @@ dist/
 # Fotos subidas en desarrollo
 backend/uploads/
 uploads/
+
+# Agente de la ticketera
+print-agent/config.env
+print-agent/comandas.txt

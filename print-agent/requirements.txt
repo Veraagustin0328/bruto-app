@@ -1,0 +1,4 @@
+httpx>=0.27
+websockets>=12.0
+# Cuando tengamos la ticketera:
+# python-escpos>=3.1
