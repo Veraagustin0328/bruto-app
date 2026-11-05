@@ -17,10 +17,18 @@ export function hora(hhmmss) {
   return (hhmmss || "").slice(0, 5);
 }
 
+// El backend manda fechas con zona ("...-03:00" o "Z"). Si alguna viene sin zona
+// (pasa con SQLite) es UTC: sin esto el navegador la tomaría como hora local
+export function fecha(iso) {
+  if (!iso) return null;
+  const conZona = /(Z|[+-]\d{2}:?\d{2})$/.test(iso);
+  return new Date(conZona ? iso : `${iso}Z`);
+}
+
 // Fecha ISO → "21:45" en la hora de Mendoza
 export function horaDe(iso) {
   if (!iso) return "";
-  return new Date(iso).toLocaleTimeString("es-AR", {
+  return fecha(iso).toLocaleTimeString("es-AR", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -30,7 +38,7 @@ export function horaDe(iso) {
 
 // Minutos desde una fecha ISO hasta ahora
 export function minutosDesde(iso, ahora = Date.now()) {
-  return Math.max(0, Math.floor((ahora - new Date(iso).getTime()) / 60000));
+  return Math.max(0, Math.floor((ahora - fecha(iso).getTime()) / 60000));
 }
 
 // "recién", "hace 16 min", "hace 1 h 5 min"
