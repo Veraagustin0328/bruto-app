@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { tienda } from "../api";
 import Logo from "../componentes/Logo";
 import { hora, precio } from "../lib/formato";
 import { Carta, EsqueletoCarta } from "./Carta";
+import Checkout from "./Checkout";
 import HojaProducto from "./HojaProducto";
 import { useCarrito } from "./carrito";
 
@@ -82,6 +84,25 @@ export default function Tienda() {
   const { agregar } = useCarrito();
   const cerrarHoja = useCallback(() => setAbierto(null), []);
 
+  // El checkout va en la misma página con ?paso=pedido / ?paso=datos,
+  // así el botón "atrás" del celu anda. ?donde=Cancha 3 viene del QR de la cancha
+  const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const paso = ["pedido", "datos"].includes(params.get("paso")) ? params.get("paso") : null;
+  const donde = (params.get("donde") || "").trim().slice(0, 120);
+
+  function irA(destino) {
+    const sig = new URLSearchParams(params);
+    if (destino) sig.set("paso", destino);
+    else sig.delete("paso");
+    const pasos = [null, "pedido", "datos"];
+    const vuelve = pasos.indexOf(destino) < pasos.indexOf(paso);
+    // Volver: si hay historia nuestra, uso el atrás del navegador; si no, reemplazo
+    if (vuelve && location.key !== "default") navigate(-1);
+    else setParams(sig, { replace: vuelve });
+  }
+
   const cargar = useCallback(async () => {
     setError(null);
     setMenu(null);
@@ -100,6 +121,14 @@ export default function Tienda() {
 
   const cabecera = <Cabecera estado={estado} />;
 
+  if (paso) {
+    return (
+      <div className="max-w-[560px] mx-auto min-h-dvh">
+        <Checkout paso={paso} irA={irA} donde={donde} estadoTienda={estado} />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-[560px] mx-auto min-h-dvh">
       {error ? (
@@ -116,7 +145,7 @@ export default function Tienda() {
         <Carta categorias={menu} arriba={cabecera} onElegir={setAbierto} />
       )}
 
-      <BarraCarrito onVer={() => {}} />
+      <BarraCarrito onVer={() => irA("pedido")} />
 
       {abierto && (
         <HojaProducto
