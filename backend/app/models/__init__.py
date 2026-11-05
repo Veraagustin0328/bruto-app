@@ -1,4 +1,5 @@
 ﻿# Importo todo acá así Alembic ve todas las tablas de una
+from app.models.config import Configuracion, Horario
 from app.models.catalogo import Categoria, GrupoOpciones, Opcion, Producto, TipoGrupo
 from app.models.pedido import (
     EstadoPago,
@@ -16,4 +17,5 @@ __all__ = [
     "Pedido", "PedidoItem", "PedidoItemOpcion",
     "ModoPedido", "MetodoPago", "EstadoPago", "EstadoPedido",
     "Usuario", "Rol",
+    "Configuracion", "Horario",
 ]

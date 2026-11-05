@@ -88,3 +88,16 @@ Rutas nuevas en `app/routers/carta.py` (`/api/carta`), lógica en `app/services/
 - La impresora no entra a `/ws/panel` ni a las rutas del panel.
 - Ojo para el print-agent: el token dura 12 hs, el agente tiene que volver a loguearse cuando le llega un 401.
 - Test nuevo `tests/test_migraciones.py`: corre todas las migraciones en una SQLite vacía, chequea con `alembic check` que coincidan con los modelos, baja hasta el principio y vuelve a subir.
+
+## B7. Horario y configuración
+
+- Dos tablas nuevas (`app/models/config.py`): `configuracion` (una sola fila, id 1: `link_pedidosya`, `pedidos_pausados`, `mensaje_cerrado`, `mensaje_pausado`) y `horarios` (un registro por día, 0 = lunes ... 6 = domingo, con `abierto`, `abre`, `cierra`).
+- **Decidí dos mensajes** (uno para cerrado y otro para pausado) en vez de uno, porque dicen cosas distintas ("volvé a la noche" vs "esperá unos minutos").
+- Horario que pasa la medianoche: si `cierra` es antes que `abre`, cierra al día siguiente. Martes 00:15 cuenta como parte del turno del **lunes**: si el lunes está marcado como que no abre, el martes 00:15 está cerrado. No se puede poner `abre` igual a `cierra` (422).
+- Usa `zona_horaria` de `config.py` (Mendoza).
+- Si la tabla de horarios está vacía, la tienda se considera abierta (prefiero no frenar la venta por un error de carga; la migración igual los carga).
+- `GET /api/tienda/estado` (público): `abierto`, `pausado`, `acepta_pedidos`, `mensaje`, `link_delivery`, `horario_hoy`.
+- `POST /api/tienda/pedidos` devuelve 400 con el mensaje que corresponda si está cerrado o pausado.
+- Rutas admin: `GET /api/config`, `PATCH /api/config` (el link se borra mandando `null` y tiene que empezar con `https://`), `PUT /api/config/horarios` (los 7 días juntos, así no queda la semana a medias).
+- Migración `2ff116c7dfc0_horario_y_configuracion` con los valores iniciales: todos los días de 18:00 a 00:30, sin link, sin pausa.
+- **Para pensar con Renzo:** la tarea dice que pausar es solo admin. Si a la noche Renzo no está, los chicos de la cantina no van a poder pausar cuando la cocina explote. Cambiarlo es una línea (`requiere_rol(Rol.cantina)` en una ruta aparte de pausa).

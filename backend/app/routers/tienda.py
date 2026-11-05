@@ -7,7 +7,9 @@ from app.config import settings
 from app.database import get_db
 from app.models import Categoria, GrupoOpciones, Producto
 from app.schemas.catalogo import CategoriaOut
+from app.schemas.config import EstadoTienda
 from app.schemas.pedido import PedidoNuevo, PedidoOut
+from app.services.config import estado_tienda, motivo_para_no_aceptar
 from app.services.pedidos import PedidoInvalido, activos_del_telefono, buscar_por_codigo, crear_pedido
 from app.ws import avisar_pedido
 
@@ -41,10 +43,21 @@ def ver_menu(db: Session = Depends(get_db)):
     return menu
 
 
+@router.get("/estado", response_model=EstadoTienda)
+def ver_estado(db: Session = Depends(get_db)):
+    # Para el cartel de "Cantina abierta" / "Cerrado" y el botón de delivery
+    return estado_tienda(db)
+
+
 @router.post("/pedidos", response_model=PedidoOut, status_code=status.HTTP_201_CREATED)
 def hacer_pedido(
     datos: PedidoNuevo, request: Request, avisos: BackgroundTasks, db: Session = Depends(get_db)
 ):
+    # Cerrado o pausado (cocina desbordada): no entra nada
+    motivo = motivo_para_no_aceptar(db)
+    if motivo:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=motivo)
+
     # La tienda es pública: freno a los que mandan pedidos en ráfaga
     ip = limites.ip_del_cliente(request)
     if not limites.puede_pedir(ip):
