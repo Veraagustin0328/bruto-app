@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { tienda } from "../api";
 import Logo from "../componentes/Logo";
-import { hora, precio } from "../lib/formato";
+import { CLAVES, local } from "../lib/almacen";
+import { hora, numeroPedido, precio } from "../lib/formato";
 import { Carta, EsqueletoCarta } from "./Carta";
 import Checkout from "./Checkout";
 import HojaProducto from "./HojaProducto";
@@ -34,6 +35,44 @@ export function Cabecera({ estado }) {
       <Logo />
       <EstadoCantina estado={estado} />
     </header>
+  );
+}
+
+// Si tiene un pedido en curso de hace poco, un acceso para volver a verlo
+const ULTIMO_VALE_MS = 12 * 60 * 60 * 1000;
+const NOMBRE_ESTADO = {
+  pendiente_pago: "esperando el pago",
+  recibido: "recibido",
+  en_preparacion: "en la plancha",
+  listo: "listo",
+};
+
+function UltimoPedido() {
+  const [pedido, setPedido] = useState(null);
+
+  useEffect(() => {
+    const ultimo = local.leer(CLAVES.ultimoPedido);
+    if (!ultimo?.codigo || Date.now() - (ultimo.creado || 0) > ULTIMO_VALE_MS) return;
+    tienda
+      .pedido(ultimo.codigo)
+      .then((p) => {
+        if (NOMBRE_ESTADO[p.estado]) setPedido(p);
+        else local.guardar(CLAVES.ultimoPedido, null); // ya terminó: no lo muestro más
+      })
+      .catch(() => {});
+  }, []);
+
+  if (!pedido) return null;
+  return (
+    <Link
+      to={`/pedido/${pedido.codigo}`}
+      className="mx-4 mt-2 mb-1 flex items-center justify-between gap-3 rounded-xl border border-naranja/50 bg-naranja/10 px-3.5 py-2.5 text-sm"
+    >
+      <span>
+        Tu pedido <b className="num">{numeroPedido(pedido.numero)}</b> está {NOMBRE_ESTADO[pedido.estado]}
+      </span>
+      <span className="text-naranja font-semibold whitespace-nowrap">Ver mi pedido ›</span>
+    </Link>
   );
 }
 
@@ -120,6 +159,14 @@ export default function Tienda() {
   }, [cargar]);
 
   const cabecera = <Cabecera estado={estado} />;
+  const avisos = (
+    <>
+      {estado && !estado.acepta_pedidos && estado.mensaje && (
+        <p className="mx-4 mt-2 p-3 rounded-xl bg-alerta/15 text-alerta text-sm">{estado.mensaje}</p>
+      )}
+      <UltimoPedido />
+    </>
+  );
 
   if (paso) {
     return (
@@ -134,15 +181,17 @@ export default function Tienda() {
       {error ? (
         <>
           {cabecera}
+          {avisos}
           <ErrorConReintento mensaje={error} onReintentar={cargar} />
         </>
       ) : !menu ? (
         <>
           {cabecera}
+          {avisos}
           <EsqueletoCarta />
         </>
       ) : (
-        <Carta categorias={menu} arriba={cabecera} onElegir={setAbierto} />
+        <Carta categorias={menu} arriba={cabecera} avisos={avisos} onElegir={setAbierto} />
       )}
 
       <BarraCarrito onVer={() => irA("pedido")} />

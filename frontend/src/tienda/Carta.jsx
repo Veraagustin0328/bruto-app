@@ -107,7 +107,7 @@ function Chips({ categorias, activa, onTocar }) {
   );
 }
 
-export function Carta({ categorias, onElegir, arriba }) {
+export function Carta({ categorias, onElegir, arriba, avisos }) {
   const [activa, setActiva] = useState(categorias[0]?.id);
   const tocando = useRef(false);
 
@@ -118,7 +118,7 @@ export function Carta({ categorias, onElegir, arriba }) {
       let actual = categorias[0]?.id;
       for (const c of categorias) {
         const el = document.getElementById(`cat-${c.id}`);
-        if (el && el.getBoundingClientRect().top < 140) actual = c.id;
+        if (el && el.getBoundingClientRect().top < 90) actual = c.id;
       }
       setActiva(actual);
     }
@@ -136,13 +136,15 @@ export function Carta({ categorias, onElegir, arriba }) {
 
   return (
     <>
+      {arriba}
+      {avisos}
+      {/* Los chips quedan pegados arriba mientras scrolleás */}
       <div className="sticky top-0 z-20 bg-negro/95 backdrop-blur">
-        {arriba}
         <Chips categorias={categorias} activa={activa} onTocar={irA} />
       </div>
       <div className="px-4 pb-32 flex flex-col gap-6 mt-2">
         {categorias.map((c) => (
-          <section key={c.id} id={`cat-${c.id}`} className="scroll-mt-32 flex flex-col gap-2.5">
+          <section key={c.id} id={`cat-${c.id}`} className="scroll-mt-16 flex flex-col gap-2.5">
             <h3 className="text-[26px]">{c.nombre}</h3>
             {c.productos.map((p) => (
               <ProductoCard key={p.id} producto={p} onElegir={onElegir} />
