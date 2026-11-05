@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     login_intentos_max: int = 5          # claves mal seguidas con el mismo email...
     login_bloqueo_minutos: int = 15      # ...y queda bloqueado este tiempo
 
+    # Fotos de productos. "local" = carpeta backend/uploads servida por FastAPI.
+    # En producción hay que pasar a un storage externo (ver app/storage.py)
+    storage: str = "local"
+    uploads_dir: str = str(Path(__file__).resolve().parent.parent / "uploads")
+
     frontend_url: str = "http://localhost:5173"
     backend_url: str = "http://localhost:8001"
 

@@ -14,3 +14,7 @@ dist/
 # Editor y sistema
 .vscode/
 .DS_Store
+
+# Fotos subidas en desarrollo
+backend/uploads/
+uploads/

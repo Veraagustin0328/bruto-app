@@ -5,8 +5,11 @@ Usan SQLite en memoria: no tocan el Postgres de Docker ni el .env.
 Las variables de entorno van antes de importar la app, así pisan lo que haya en el .env
 """
 import os
+import tempfile
 
 os.environ.update(
+    # Las fotos de los tests van a una carpeta temporal, no a backend/uploads
+    UPLOADS_DIR=tempfile.mkdtemp(prefix="bruto-uploads-"),
     DATABASE_URL="sqlite://",
     JWT_SECRET="secreto-de-los-tests-largo-para-que-no-chille-jwt",
     MP_ACCESS_TOKEN="",

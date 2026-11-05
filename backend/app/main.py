@@ -1,10 +1,14 @@
-﻿import asyncio
+import asyncio
+import mimetypes
 from contextlib import asynccontextmanager
+
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
-from app import ws
+from app import storage, ws
 from app.config import settings
 from app.routers import auth, carta, config, impresion, pagos, panel, tienda
 from app.services.vencidos import revisar_cada_tanto
@@ -44,6 +48,13 @@ app.include_router(carta.router)
 app.include_router(impresion.router)
 app.include_router(config.router)
 app.include_router(ws.router)
+
+# Las fotos de los productos, mientras se guarden en el disco (desarrollo)
+if settings.storage == "local":
+    # En Windows Python no siempre conoce .webp y lo mandaría como archivo para bajar
+    mimetypes.add_type("image/webp", ".webp")
+    Path(settings.uploads_dir).mkdir(parents=True, exist_ok=True)
+    app.mount(storage.PREFIJO_URL, StaticFiles(directory=settings.uploads_dir), name="uploads")
 
 
 @app.get("/api/salud", tags=["Sistema"])

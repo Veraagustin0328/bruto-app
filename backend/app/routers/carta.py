@@ -1,13 +1,14 @@
-"""
+﻿"""
 La carta desde el panel. Todo solo admin (Renzo), salvo prender/apagar
 un producto o una opción, que también lo hace la cantina (la bondiola sin stock).
 
 Cada cambio le manda "carta_actualizada" al WebSocket del panel.
 """
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import storage
 from app.database import get_db
 from app.deps import requiere_rol
 from app.models import Categoria, GrupoOpciones, Opcion, Producto, Rol, Usuario
@@ -30,6 +31,7 @@ from app.schemas.carta import (
     VistaPreviaAumento,
 )
 from app.services import carta as srv
+from app.services import fotos
 from app.ws import avisar_carta
 
 solo_admin = requiere_rol(Rol.admin)
@@ -177,9 +179,46 @@ def borrar_producto(
     db: Session = Depends(get_db), _: Usuario = Depends(solo_admin),
 ):
     # Los pedidos viejos no se rompen: tienen nombre y precio copiados
-    db.delete(traer(db, Producto, producto_id, "producto"))
+    prod = traer(db, Producto, producto_id, "producto")
+    foto = prod.imagen_url
+    db.delete(prod)
     guardar(db, avisos)
+    storage.borrar_archivo(foto)
     return Response(status_code=204)
+
+
+@router.post("/productos/{producto_id}/foto", response_model=ProductoAdmin)
+def subir_foto(
+    producto_id: int, avisos: BackgroundTasks,
+    foto: UploadFile = File(description="jpg, png o webp de hasta 5 MB"),
+    db: Session = Depends(get_db), _: Usuario = Depends(solo_admin),
+):
+    prod = traer(db, Producto, producto_id, "producto")
+    # Leo un byte de más para saber si se pasa de 5 MB sin cargar un archivo gigante entero
+    contenido = foto.file.read(fotos.MAX_BYTES + 1)
+    try:
+        url = fotos.guardar_foto_producto(contenido)
+    except fotos.FotoInvalida as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    vieja = prod.imagen_url
+    prod.imagen_url = url
+    guardar(db, avisos, prod)
+    storage.borrar_archivo(vieja)  # la anterior ya no la usa nadie
+    return prod
+
+
+@router.delete("/productos/{producto_id}/foto", response_model=ProductoAdmin)
+def borrar_foto(
+    producto_id: int, avisos: BackgroundTasks,
+    db: Session = Depends(get_db), _: Usuario = Depends(solo_admin),
+):
+    prod = traer(db, Producto, producto_id, "producto")
+    vieja = prod.imagen_url
+    prod.imagen_url = None
+    guardar(db, avisos, prod)
+    storage.borrar_archivo(vieja)
+    return prod
 
 
 @router.patch("/productos/{producto_id}/disponible", response_model=ProductoAdmin)

@@ -101,3 +101,15 @@ Rutas nuevas en `app/routers/carta.py` (`/api/carta`), lógica en `app/services/
 - Rutas admin: `GET /api/config`, `PATCH /api/config` (el link se borra mandando `null` y tiene que empezar con `https://`), `PUT /api/config/horarios` (los 7 días juntos, así no queda la semana a medias).
 - Migración `2ff116c7dfc0_horario_y_configuracion` con los valores iniciales: todos los días de 18:00 a 00:30, sin link, sin pausa.
 - **Para pensar con Renzo:** la tarea dice que pausar es solo admin. Si a la noche Renzo no está, los chicos de la cantina no van a poder pausar cuando la cocina explote. Cambiarlo es una línea (`requiere_rol(Rol.cantina)` en una ruta aparte de pausa).
+
+## B8. Fotos de los productos
+
+- **Librería: Pillow** (`pillow>=10.0` en `requirements.txt`). La tarea pedía avisar antes de instalarla; como no estabas, elegí la estándar de Python para imágenes: lee jpg/png/webp, guarda webp y no necesita nada instalado aparte en Windows ni en Railway.
+- `POST /api/carta/productos/{id}/foto` (admin, `multipart/form-data`, campo `foto`): hasta 5 MB, solo jpg/png/webp. **El formato se mira abriendo el archivo**, no por la extensión. La endereza si viene girada del celu (EXIF), la achica a 800 px de lado máximo (nunca la agranda), la pasa a webp y guarda la URL en `imagen_url`. Al guardarla como webp se le borran los datos EXIF (ej. la ubicación GPS del celu).
+- `DELETE /api/carta/productos/{id}/foto` la saca. Cambiar la foto o borrar el producto borra el archivo viejo.
+- Tope de 40 millones de píxeles para que una imagen armada a propósito no reviente la memoria.
+- `app/storage.py`: `guardar_archivo()` y `borrar_archivo()` son lo único que sabe dónde van los archivos. Hoy guardan en `backend/uploads/productos/` (configurable con `UPLOADS_DIR`), servidos por FastAPI en `/uploads`. La URL guardada es absoluta (`BACKEND_URL` + `/uploads/...`) porque el front está en otro dominio.
+- **Pendiente para producción:** Railway borra el disco en cada deploy, así que antes de subir fotos en serio hay que poner un storage externo (Cloudinary, S3 o R2) en esas dos funciones y `STORAGE` distinto de `local`.
+- Sumé `backend/uploads/` al `.gitignore`.
+- Arreglo de paso: en Windows Python no conocía el tipo `.webp` y servía las fotos como "archivo para bajar". Lo registro en `main.py`.
+- Avisa `carta_actualizada` al panel.
