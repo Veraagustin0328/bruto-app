@@ -1,0 +1,175 @@
+/* La intro del paletazo, igual que docs/intro-bruto.html.
+   La escena mide 280 x 600 (la pantalla del celu de la maqueta) y se escala
+   para entrar en cualquier pantalla, así las posiciones en px quedan iguales */
+
+.intro {
+  --pelota: #d8f04a;
+  --k: 1;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  overflow: hidden;
+  cursor: pointer;
+  background: radial-gradient(120% 70% at 50% 42%, #1c1714 0%, var(--color-negro) 62%);
+  transition: opacity 0.45s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.intro.chau {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.intro .escena {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 280px;
+  height: 600px;
+  transform: translate(-50%, -50%) scale(var(--escala, 1));
+}
+.intro .escena .dentro {
+  position: absolute;
+  inset: 0;
+}
+
+/* cancha de fondo */
+.intro .cancha { position: absolute; inset: 0; opacity: 0.35; }
+.intro .cancha i { position: absolute; background: #3a332e; }
+.intro .cancha .red { left: 0; right: 0; top: 64%; height: 3px; background: repeating-linear-gradient(90deg, #4a423c 0 4px, transparent 4px 8px); }
+.intro .cancha .serv { left: 12%; right: 12%; top: 80%; height: 2px; }
+.intro .cancha .centro { left: 50%; top: 80%; bottom: 0; width: 2px; }
+.intro .cancha .vidrio { left: 0; right: 0; top: 0; height: 64%; background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent); }
+
+.intro .pala { position: absolute; width: 40%; left: 6%; bottom: 4%; transform-origin: 50% 98%; transform: rotate(-75deg); opacity: 0; }
+.intro .pala svg { width: 100%; height: auto; display: block; overflow: visible; }
+
+.intro .pelota {
+  position: absolute; width: 11%; aspect-ratio: 1; left: 0; top: 0; border-radius: 50%; opacity: 0;
+  background: radial-gradient(circle at 34% 30%, #f4ff9a 0 14%, var(--pelota) 40%, #9fb52a 100%);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
+}
+.intro .pelota::after {
+  content: ""; position: absolute; inset: 12%; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.75); border-left-color: transparent; border-right-color: transparent; transform: rotate(25deg);
+}
+
+.intro .destello {
+  position: absolute; width: 38%; aspect-ratio: 1; left: 45%; top: 70%; border-radius: 50%; transform: translate(-50%, -50%) scale(0); opacity: 0;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0 18%, rgba(240, 92, 43, 0.7) 40%, transparent 70%);
+}
+.intro .estela { position: absolute; left: 47%; top: 70%; width: 40%; height: 3px; border-radius: 3px; background: linear-gradient(90deg, transparent, var(--color-naranja)); transform-origin: 0 50%; opacity: 0; }
+.intro .estela.e2 { top: 73%; width: 30%; }
+.intro .estela.e3 { top: 67%; width: 26%; }
+
+.intro .logo { position: absolute; left: 0; right: 0; top: 24%; display: grid; justify-items: center; gap: 8px; }
+.intro .logo .llama { width: 38%; opacity: 0; transform: scale(0.2); }
+.intro .logo .palabra { width: 72%; opacity: 0; transform: translateY(-40px) scale(1.25); }
+.intro .logo .bajada { font-weight: 600; font-size: 12px; letter-spacing: 0.1em; color: var(--color-naranja); opacity: 0; }
+.intro .chispa { position: absolute; left: 50%; top: 31%; width: 6px; height: 6px; border-radius: 50%; background: var(--color-naranja); opacity: 0; }
+
+.intro .final { position: absolute; left: 0; right: 0; bottom: 10%; display: grid; justify-items: center; gap: 14px; padding: 0 22px; opacity: 0; transform: translateY(14px); }
+.intro .final p { margin: 0; color: var(--color-tenue); font-size: 13px; text-align: center; }
+.intro .final p b { color: var(--color-texto); font-weight: 600; }
+.intro .final .boton { width: 100%; text-align: center; padding: 13px; border-radius: 14px; background: var(--color-naranja); color: #fff; font-weight: 700; letter-spacing: 0.06em; font-size: 13px; }
+.intro .saltear { position: absolute; top: 42px; right: 16px; font-size: 11px; color: var(--color-tenue); opacity: 0.8; z-index: 5; }
+
+/* ---------- la secuencia ---------- */
+.intro .pala { animation: intro-pala calc(1.5s * var(--k)) calc(0.15s * var(--k)) cubic-bezier(0.5, 0, 0.3, 1) both; }
+.intro .pelota { animation: intro-pelota calc(1.55s * var(--k)) 0s linear both; }
+.intro .destello { animation: intro-destello calc(0.45s * var(--k)) calc(0.92s * var(--k)) ease-out both; }
+.intro .estela { animation: intro-estela calc(0.4s * var(--k)) calc(0.95s * var(--k)) ease-out both; }
+.intro .estela.e2 { animation-delay: calc(1s * var(--k)); }
+.intro .estela.e3 { animation-delay: calc(1.04s * var(--k)); }
+.intro .dentro { animation: intro-sacudon calc(0.3s * var(--k)) calc(0.93s * var(--k)) both, intro-sacudon calc(0.25s * var(--k)) calc(1.82s * var(--k)); }
+.intro .logo .llama { animation: intro-llama calc(0.7s * var(--k)) calc(1.4s * var(--k)) cubic-bezier(0.2, 1.6, 0.4, 1) both, intro-brasa calc(2.4s * var(--k)) calc(2.1s * var(--k)) ease-in-out infinite; }
+.intro .logo .palabra { animation: intro-palabra calc(0.38s * var(--k)) calc(1.62s * var(--k)) cubic-bezier(0.5, 0, 0.6, 1.4) both; }
+.intro .logo .bajada { animation: intro-bajada calc(0.6s * var(--k)) calc(2s * var(--k)) ease-out both; }
+.intro .chispa { animation: intro-chispa calc(0.9s * var(--k)) calc(1.45s * var(--k)) ease-out both; }
+.intro .final { animation: intro-final calc(0.6s * var(--k)) calc(2.45s * var(--k)) ease-out both; }
+
+@keyframes intro-pala {
+  0% { opacity: 0; transform: rotate(-60deg); }
+  15% { opacity: 1; }
+  45% { transform: rotate(-88deg); } /* se arma para pegar */
+  52% { transform: rotate(20deg); } /* el paletazo */
+  70% { transform: rotate(48deg); opacity: 1; }
+  100% { transform: rotate(56deg) translateX(-40px); opacity: 0; }
+}
+@keyframes intro-pelota {
+  0% { opacity: 0; transform: translate(250px, 30px) scale(0.7) rotate(0); }
+  8% { opacity: 1; }
+  30% { transform: translate(200px, 150px) scale(0.85) rotate(-200deg); }
+  60% { transform: translate(112px, 405px) scale(1) rotate(-480deg); } /* contacto con la pala */
+  76% { transform: translate(122px, 250px) scale(2.4) rotate(-760deg); opacity: 1; }
+  88% { transform: translate(122px, 195px) scale(5) rotate(-900deg); opacity: 0.9; }
+  100% { transform: translate(122px, 175px) scale(7) rotate(-960deg); opacity: 0; }
+}
+@keyframes intro-destello {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(2.2); }
+}
+@keyframes intro-estela {
+  0% { opacity: 0; transform: rotate(-38deg) scaleX(0); }
+  40% { opacity: 1; transform: rotate(-38deg) scaleX(1); }
+  100% { opacity: 0; transform: rotate(-38deg) scaleX(1) translateX(60px); }
+}
+@keyframes intro-sacudon {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-5px, 3px); }
+  50% { transform: translate(4px, -3px); }
+  75% { transform: translate(-2px, 1px); }
+}
+@keyframes intro-llama {
+  0% { opacity: 0; transform: scale(0.2); filter: drop-shadow(0 0 0 rgba(240, 92, 43, 0)); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 22px rgba(240, 92, 43, 0.55)); }
+}
+@keyframes intro-brasa {
+  0%, 100% { filter: drop-shadow(0 0 22px rgba(240, 92, 43, 0.55)); transform: scale(1); }
+  50% { filter: drop-shadow(0 0 34px rgba(240, 92, 43, 0.8)); transform: scale(1.03); }
+}
+@keyframes intro-palabra {
+  0% { opacity: 0; transform: translateY(-40px) scale(1.25); }
+  70% { opacity: 1; transform: translateY(4px) scale(0.98); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes intro-bajada {
+  from { opacity: 0; letter-spacing: 0.1em; }
+  to { opacity: 1; letter-spacing: 0.45em; }
+}
+@keyframes intro-chispa {
+  0% { opacity: 0; transform: translate(-50%, -50%) translate(0, 0) scale(1); }
+  10% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) translate(var(--x), var(--y)) scale(0.3); }
+}
+@keyframes intro-final {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Con menos movimiento: directo al logo, sin pelota ni pala.
+   (index.css acorta todas las animaciones, acá además salteo las que no van) */
+.intro.quieta .pala,
+.intro.quieta .pelota,
+.intro.quieta .destello,
+.intro.quieta .estela,
+.intro.quieta .chispa,
+.intro.quieta .dentro {
+  animation: none;
+  opacity: 0;
+}
+.intro.quieta .dentro {
+  opacity: 1;
+}
+.intro.quieta .logo .llama,
+.intro.quieta .logo .palabra,
+.intro.quieta .logo .bajada,
+.intro.quieta .final {
+  animation: none;
+  opacity: 1;
+  transform: none;
+}
+.intro.quieta .logo .bajada {
+  letter-spacing: 0.45em;
+}

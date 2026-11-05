@@ -2,11 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { tienda } from "../api";
 import Logo from "../componentes/Logo";
-import { CLAVES, local } from "../lib/almacen";
+import { CLAVES, local, sesion } from "../lib/almacen";
 import { hora, numeroPedido, precio } from "../lib/formato";
 import { Carta, EsqueletoCarta } from "./Carta";
 import Checkout from "./Checkout";
 import HojaProducto from "./HojaProducto";
+import IntroBruto from "./IntroBruto";
 import { useCarrito } from "./carrito";
 
 // Arriba a la derecha: "Cantina abierta hasta las 00:30" o "Cerrada"
@@ -131,6 +132,13 @@ export default function Tienda() {
   const paso = ["pedido", "datos"].includes(params.get("paso")) ? params.get("paso") : null;
   const donde = (params.get("donde") || "").trim().slice(0, 120);
 
+  // La intro sale una sola vez por visita, y no si entra directo al checkout
+  const [verIntro, setVerIntro] = useState(() => !paso && !sesion.leer(CLAVES.intro));
+  useEffect(() => {
+    if (verIntro) sesion.guardar(CLAVES.intro, 1);
+  }, [verIntro]);
+  const terminarIntro = useCallback(() => setVerIntro(false), []);
+
   function irA(destino) {
     const sig = new URLSearchParams(params);
     if (destino) sig.set("paso", destino);
@@ -195,6 +203,8 @@ export default function Tienda() {
       )}
 
       <BarraCarrito onVer={() => irA("pedido")} />
+
+      {verIntro && <IntroBruto donde={donde} onTerminar={terminarIntro} />}
 
       {abierto && (
         <HojaProducto
