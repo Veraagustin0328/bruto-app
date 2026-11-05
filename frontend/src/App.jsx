@@ -1,4 +1,5 @@
 import { Route, Routes } from "react-router-dom";
+import Tienda from "./tienda/Tienda";
 
 // Por ahora cada ruta muestra su nombre, para ver que el router anda
 function Provisoria({ nombre }) {
@@ -12,7 +13,7 @@ function Provisoria({ nombre }) {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Provisoria nombre="Tienda" />} />
+      <Route path="/" element={<Tienda />} />
       <Route path="/pedido/:codigo" element={<Provisoria nombre="Seguimiento" />} />
       <Route path="/panel/login" element={<Provisoria nombre="Login" />} />
       <Route path="/panel" element={<Provisoria nombre="Panel de la cantina" />} />

@@ -1,0 +1,70 @@
+// Formatos que se repiten en toda la app
+
+const numeros = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 });
+
+// 12500 → "$12.500"
+export function precio(n) {
+  return `$${numeros.format(Math.round(Number(n) || 0))}`;
+}
+
+// 42 → "#042"
+export function numeroPedido(n) {
+  return `#${String(n).padStart(3, "0")}`;
+}
+
+// "00:30:00" → "00:30"
+export function hora(hhmmss) {
+  return (hhmmss || "").slice(0, 5);
+}
+
+// Fecha ISO → "21:45" en la hora de Mendoza
+export function horaDe(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "America/Argentina/Mendoza",
+  });
+}
+
+// Minutos desde una fecha ISO hasta ahora
+export function minutosDesde(iso, ahora = Date.now()) {
+  return Math.max(0, Math.floor((ahora - new Date(iso).getTime()) / 60000));
+}
+
+// "recién", "hace 16 min", "hace 1 h 5 min"
+export function haceCuanto(iso, ahora = Date.now()) {
+  const min = minutosDesde(iso, ahora);
+  if (min < 1) return "recién";
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.floor(min / 60);
+  const resto = min % 60;
+  return resto ? `hace ${h} h ${resto} min` : `hace ${h} h`;
+}
+
+// Segundos → "07:14" (el reloj de la cocina)
+export function reloj(segundos) {
+  const s = Math.max(0, Math.floor(segundos));
+  const m = Math.floor(s / 60);
+  const dos = (x) => String(x).padStart(2, "0");
+  if (m >= 60) return `${Math.floor(m / 60)}:${dos(m % 60)}:${dos(s % 60)}`;
+  return `${dos(m)}:${dos(s % 60)}`;
+}
+
+// "2615550142" → "261 555 0142", solo para que se lea mejor
+export function telefono(t) {
+  const d = String(t || "").replace(/\D/g, "");
+  if (d.length === 10) return `${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}`;
+  return d;
+}
+
+// Opciones de un item → "Doble · 2× Extra carne y queso"
+export function textoOpciones(opciones = []) {
+  return opciones
+    .map((o) => {
+      const nombre = o.nombre_opcion ?? o.nombre;
+      return o.cantidad > 1 ? `${o.cantidad}× ${nombre}` : nombre;
+    })
+    .join(" · ");
+}
