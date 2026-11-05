@@ -1,12 +1,14 @@
-﻿from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+﻿from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app import limites
+from app.config import settings
 from app.database import get_db
 from app.models import Categoria, GrupoOpciones, Producto
 from app.schemas.catalogo import CategoriaOut
 from app.schemas.pedido import PedidoNuevo, PedidoOut
-from app.services.pedidos import PedidoInvalido, buscar_por_codigo, crear_pedido
+from app.services.pedidos import PedidoInvalido, activos_del_telefono, buscar_por_codigo, crear_pedido
 from app.ws import avisar_pedido
 
 # Todo lo de acá es público: lo usa el cliente desde el celu, sin login
@@ -40,11 +42,29 @@ def ver_menu(db: Session = Depends(get_db)):
 
 
 @router.post("/pedidos", response_model=PedidoOut, status_code=status.HTTP_201_CREATED)
-def hacer_pedido(datos: PedidoNuevo, avisos: BackgroundTasks, db: Session = Depends(get_db)):
+def hacer_pedido(
+    datos: PedidoNuevo, request: Request, avisos: BackgroundTasks, db: Session = Depends(get_db)
+):
+    # La tienda es pública: freno a los que mandan pedidos en ráfaga
+    ip = limites.ip_del_cliente(request)
+    if not limites.puede_pedir(ip):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Hiciste muchos pedidos seguidos, esperá unos minutos",
+        )
+    if activos_del_telefono(db, datos.telefono) >= settings.limite_activos_por_telefono:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Ya tenés varios pedidos en curso con este teléfono. Esperá a que salgan y pedí de nuevo",
+        )
+
     try:
         pedido = crear_pedido(db, datos)
     except PedidoInvalido as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    # Solo cuento los que entraron: un error del cliente no le gasta el cupo
+    limites.anotar_pedido(ip)
 
     # Le cae al panel de la cantina al toque, sin que nadie recargue
     avisos.add_task(avisar_pedido, pedido.id, "pedido_nuevo")

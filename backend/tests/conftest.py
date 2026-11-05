@@ -15,6 +15,7 @@ os.environ.update(
     BACKEND_URL="http://localhost:8001",
 )
 
+import bcrypt  # noqa: E402
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, select  # noqa: E402
@@ -24,7 +25,7 @@ import app.models  # noqa: E402,F401
 from app import database  # noqa: E402
 from app.database import Base, SessionLocal  # noqa: E402
 from app.models import Opcion, Producto, Rol, Usuario  # noqa: E402
-from app.security import crear_token, hashear_password  # noqa: E402
+from app.security import crear_token  # noqa: E402
 
 # Una sola conexión compartida, si no cada sesión vería una base vacía distinta
 engine = create_engine(
@@ -34,8 +35,9 @@ SessionLocal.configure(bind=engine)
 database.engine = engine
 
 PASSWORD = "clave-de-prueba"
-# bcrypt es lento a propósito, hasheo una vez y listo
-HASH = hashear_password(PASSWORD)
+# bcrypt es lento a propósito. En los tests uso pocas rondas: checkpw lee
+# las rondas del hash, así que verificar_password anda igual pero rápido
+HASH = bcrypt.hashpw(PASSWORD.encode(), bcrypt.gensalt(rounds=4)).decode()
 
 
 @pytest.fixture(autouse=True)
@@ -47,7 +49,10 @@ def base_limpia():
 
 @pytest.fixture(autouse=True)
 def limpiar_memoria():
-    # Hook para lo que vive en memoria (límites, etc.), se va llenando con los pasos
+    # Lo que vive en memoria (límites) arranca de cero en cada test
+    from app import limites
+
+    limites.reiniciar()
     yield
 
 

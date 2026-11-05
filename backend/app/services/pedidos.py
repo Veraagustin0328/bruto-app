@@ -173,6 +173,14 @@ def crear_pedido(db: Session, datos: PedidoNuevo) -> Pedido:
     return pedido
 
 
+def activos_del_telefono(db: Session, telefono: str) -> int:
+    # Pedidos en curso (los que ve la cocina) de este teléfono
+    en_curso = [EstadoPedido.recibido, EstadoPedido.en_preparacion, EstadoPedido.listo]
+    return db.scalar(
+        select(func.count(Pedido.id)).where(Pedido.telefono == telefono, Pedido.estado.in_(en_curso))
+    )
+
+
 def buscar_por_codigo(db: Session, codigo: str) -> Pedido | None:
     return db.scalar(
         select(Pedido)

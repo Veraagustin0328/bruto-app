@@ -48,3 +48,13 @@ Estaban los dos archivos de `docs/mercadopago/`. Los copié a `app/services/pago
 - Los dos números están en `config.py` y se pueden pisar desde el `.env` (`MINUTOS_PARA_PAGAR`, `SEGUNDOS_ENTRE_REVISIONES`).
 
 **Cómo probarlo sin esperar 30 minutos:** en `backend/.env` agregá `MINUTOS_PARA_PAGAR=1` (y el token de prueba de MP), reiniciá uvicorn, hacé un pedido con MP y no lo pagues. Al minuto o dos `GET /api/tienda/pedidos/{codigo}` te lo muestra `cancelado`. Para el caso "pagó y no llegó el aviso": creá la preferencia, pagala con la tarjeta `APRO` y **no** llames a `/verificar`; a los 1-2 minutos lo vas a ver `recibido` en el panel. Después sacá esa línea del `.env`.
+
+## B4. Protección contra abusos
+
+- `app/limites.py`, todo en memoria con un lock (las rutas sync corren en varios hilos). Si se reinicia el backend los contadores arrancan de cero.
+- `POST /api/tienda/pedidos`: máximo `LIMITE_PEDIDOS_POR_IP` (5) cada `LIMITE_PEDIDOS_MINUTOS` (10) por IP → 429 "Hiciste muchos pedidos seguidos, esperá unos minutos". Solo cuentan los pedidos que entraron: si el cliente se equivoca (400) no gasta el cupo.
+- Máximo `LIMITE_ACTIVOS_POR_TELEFONO` (3) pedidos en `recibido`, `en_preparacion` o `listo` por teléfono (comparado ya normalizado, solo números) → 429. Los de MP sin pagar no cuentan, como pide la tarea (no le llegan a la cocina).
+- Login: después de `LOGIN_INTENTOS_MAX` (5) claves mal con el mismo email, bloqueado `LOGIN_BLOQUEO_MINUTOS` (15) → 429 "Muchos intentos fallidos. Probá de nuevo en N minutos", aunque después ponga la clave bien. Un login bueno reinicia la cuenta. También se bloquean emails que no existen, así no sirve para averiguar cuáles hay.
+- **IP detrás de Railway:** tomo la **última** IP de `X-Forwarded-For` (la que agrega el proxy). Las anteriores las puede inventar cualquiera mandando el header, y con eso se salteaba el límite. Si no hay header, uso la IP de la conexión. Si algún día hay dos proxies adelante (ej. Cloudflare + Railway), hay que revisar esto.
+- Usé 429 (Too Many Requests) para todos.
+- Tests: el hash de la clave en los tests usa 4 rondas de bcrypt para que corran rápido (la app sigue usando las 12 por defecto).

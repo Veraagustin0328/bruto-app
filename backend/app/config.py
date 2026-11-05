@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     # Cada cuánto se fija si hay pedidos de MP vencidos
     segundos_entre_revisiones: int = 60
 
+    # Límites contra abusos (ver app/limites.py)
+    limite_pedidos_por_ip: int = 5       # pedidos por IP...
+    limite_pedidos_minutos: int = 10     # ...cada tantos minutos
+    limite_activos_por_telefono: int = 3  # pedidos en curso a la vez por teléfono
+    login_intentos_max: int = 5          # claves mal seguidas con el mismo email...
+    login_bloqueo_minutos: int = 15      # ...y queda bloqueado este tiempo
+
     frontend_url: str = "http://localhost:5173"
     backend_url: str = "http://localhost:8001"
 

@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import limites
 from app.database import get_db
 from app.deps import requiere_rol, usuario_actual
 from app.models import Rol, Usuario
@@ -17,15 +18,27 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
     # Va como formulario (username + password) porque es el estándar de OAuth2
     # y así funciona el botón "Authorize" de /docs. En username va el email
     email = form.username.strip().lower()
+
+    # Muchas claves mal seguidas: ese email queda bloqueado un rato, aunque ahora la ponga bien
+    falta = limites.segundos_de_bloqueo(email)
+    if falta:
+        minutos = max(1, round(falta / 60))
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Muchos intentos fallidos. Probá de nuevo en {minutos} minutos",
+        )
+
     usuario = db.scalar(select(Usuario).where(Usuario.email == email))
 
     # Mismo mensaje si no existe o si la clave está mal, así no se puede
     # averiguar qué emails están registrados
     if usuario is None or not verificar_password(form.password, usuario.password_hash):
+        limites.anotar_login_fallido(email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email o contraseña incorrectos",
         )
+    limites.anotar_login_ok(email)
     if not usuario.activo:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

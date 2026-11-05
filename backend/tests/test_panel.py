@@ -152,7 +152,8 @@ def test_resumen(client, db, cantina, carta):
     a = id_de(db, hacer_pedido(client, db)["codigo"])  # 20.000 efectivo sin cobrar
     b = id_de(db, hacer_pedido(client, db)["codigo"])  # 20.000 efectivo cobrado
     c = id_de(db, hacer_pedido(client, db)["codigo"])  # cancelado
-    hacer_pedido(client, db, metodo_pago="mercadopago")  # esperando pago
+    # Otro teléfono: con 3 en curso el mismo teléfono no puede pedir más (B4)
+    hacer_pedido(client, db, metodo_pago="mercadopago", telefono="2615559999")  # esperando pago
     client.post(f"/api/panel/pedidos/{b}/cobrar", headers=headers(cantina))
     estado(client, c, "cancelado", cantina)
 
