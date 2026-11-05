@@ -57,3 +57,23 @@ h3,
 .sin-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Animaciones chicas de la tienda */
+@keyframes subir {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes aparecer {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

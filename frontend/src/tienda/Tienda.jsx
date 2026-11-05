@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { tienda } from "../api";
 import Logo from "../componentes/Logo";
-import { hora } from "../lib/formato";
+import { hora, precio } from "../lib/formato";
 import { Carta, EsqueletoCarta } from "./Carta";
+import HojaProducto from "./HojaProducto";
+import { useCarrito } from "./carrito";
 
 // Arriba a la derecha: "Cantina abierta hasta las 00:30" o "Cerrada"
 function EstadoCantina({ estado }) {
@@ -49,10 +51,36 @@ export function ErrorConReintento({ mensaje, onReintentar }) {
   );
 }
 
+// La barra naranja de abajo: "Ver mi pedido · 2 · $29.000"
+function BarraCarrito({ onVer }) {
+  const { cantidad, total } = useCarrito();
+  if (!cantidad) return null;
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-30 pointer-events-none">
+      <div className="max-w-[560px] mx-auto px-3 pb-[max(14px,env(safe-area-inset-bottom))]">
+        <button
+          type="button"
+          onClick={onVer}
+          className="pointer-events-auto w-full flex items-center justify-between rounded-2xl bg-naranja text-white font-semibold px-4 py-3.5 shadow-[0_8px_22px_rgba(240,92,43,0.35)] num"
+        >
+          <span className="flex items-center">
+            <span className="bg-black/25 rounded-md px-2 mr-2.5">{cantidad}</span>
+            Ver mi pedido
+          </span>
+          <span>{precio(total)}</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Tienda() {
   const [menu, setMenu] = useState(null);
   const [estado, setEstado] = useState(null);
   const [error, setError] = useState(null);
+  const [abierto, setAbierto] = useState(null); // producto en la hoja de abajo
+  const { agregar } = useCarrito();
+  const cerrarHoja = useCallback(() => setAbierto(null), []);
 
   const cargar = useCallback(async () => {
     setError(null);
@@ -85,7 +113,20 @@ export default function Tienda() {
           <EsqueletoCarta />
         </>
       ) : (
-        <Carta categorias={menu} arriba={cabecera} />
+        <Carta categorias={menu} arriba={cabecera} onElegir={setAbierto} />
+      )}
+
+      <BarraCarrito onVer={() => {}} />
+
+      {abierto && (
+        <HojaProducto
+          producto={abierto}
+          onCerrar={cerrarHoja}
+          onAgregar={(item) => {
+            agregar(item);
+            setAbierto(null);
+          }}
+        />
       )}
     </div>
   );
