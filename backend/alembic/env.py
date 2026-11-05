@@ -40,6 +40,8 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,  # que detecte cambios de tipo de columna
+            # SQLite no sabe hacer ALTER COLUMN: así Alembic rearma la tabla
+            render_as_batch=connection.dialect.name == "sqlite",
         )
         with context.begin_transaction():
             context.run_migrations()

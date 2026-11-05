@@ -7,7 +7,7 @@ from app.models import EstadoPedido, Pedido, Rol, Usuario
 from app.schemas.panel import CambioEstado, PedidoConAviso, PedidoPanelOut, ResumenDia
 from app.services import panel as srv
 from app.services.pedidos import PedidoInvalido
-from app.ws import avisar_pedido
+from app.ws import avisar_impresora, avisar_pedido
 
 router = APIRouter(prefix="/api/panel", tags=["Panel de la cantina"])
 
@@ -122,4 +122,6 @@ def reimprimir(
     except PedidoInvalido as e:
         raise a_400(e)
     avisos.add_task(avisar_pedido, actualizado.id, "pedido_actualizado")
+    # Al agente de la ticketera le llega al toque, sin esperar a que consulte
+    avisos.add_task(avisar_impresora, actualizado.id)
     return actualizado

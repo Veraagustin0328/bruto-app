@@ -1,8 +1,9 @@
 ﻿"""
 Tiempo real con WebSockets.
 
-Hay dos tipos de "salas":
+Hay tres tipos de "salas":
 - "panel": la cantina, la cocina y el admin. Reciben todos los pedidos.
+- "impresion": el agente de la ticketera. Recibe lo que hay que imprimir.
 - "pedido:<codigo>": el celu del cliente. Recibe solo su pedido.
 
 Ojo: las conexiones viven en la memoria de este proceso. Con un solo
@@ -82,6 +83,28 @@ async def ws_panel(ws: WebSocket, token: str = ""):
         salas.salir("panel", ws)
 
 
+@router.websocket("/ws/impresion")
+async def ws_impresion(ws: WebSocket, token: str = ""):
+    # El agente de la ticketera (rol impresora). El admin también, para probar
+    datos = leer_token(token)
+    usuario = None
+    if datos:
+        with SessionLocal() as db:
+            usuario = db.get(Usuario, int(datos["sub"]))
+
+    if usuario is None or not usuario.activo or usuario.rol not in (Rol.admin, Rol.impresora):
+        await ws.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    await salas.entrar("impresion", ws)
+    try:
+        await escuchar_hasta_que_corte(ws)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        salas.salir("impresion", ws)
+
+
 @router.websocket("/ws/pedido/{codigo}")
 async def ws_pedido(ws: WebSocket, codigo: str):
     # El celu del cliente. No pide login: el código largo y random ya hace de llave
@@ -125,7 +148,24 @@ async def avisar_pedido(pedido_id: int, evento: str):
     # Un pedido de MP sin pagar todavía no existe para la cantina ni la cocina
     if not sin_pagar:
         await salas.mandar("panel", {"evento": evento, "pedido": para_panel})
+        # Pedido que recién entra a la cocina: que salga la comanda
+        if evento == "pedido_nuevo":
+            await salas.mandar("impresion", {"evento": "imprimir", "pedido": para_panel})
     await salas.mandar(f"pedido:{codigo}", {"evento": "pedido_actualizado", "pedido": para_cliente})
+
+
+async def avisar_impresora(pedido_id: int):
+    # Para "reimprimir": le manda el pedido al agente de la ticketera
+    with SessionLocal() as db:
+        pedido = db.scalar(
+            select(Pedido)
+            .where(Pedido.id == pedido_id)
+            .options(selectinload(Pedido.items).selectinload(PedidoItem.opciones))
+        )
+        if pedido is None:
+            return
+        datos = PedidoPanelOut.model_validate(pedido).model_dump(mode="json")
+    await salas.mandar("impresion", {"evento": "imprimir", "pedido": datos})
 
 
 async def avisar_carta():

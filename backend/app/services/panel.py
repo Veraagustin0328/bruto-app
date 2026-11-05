@@ -145,6 +145,22 @@ def pedir_reimpresion(db: Session, pedido: Pedido) -> Pedido:
     return buscar(db, pedido.id)
 
 
+def pendientes_de_imprimir(db: Session) -> list[Pedido]:
+    # Lo que la ticketera todavía no sacó: de la jornada, en cocina y sin impreso_at
+    return list(
+        db.scalars(
+            select(Pedido)
+            .where(
+                Pedido.created_at >= inicio_jornada(),
+                Pedido.estado.in_([E.recibido, E.en_preparacion]),
+                Pedido.impreso_at.is_(None),
+            )
+            .options(_con_items())
+            .order_by(Pedido.numero)
+        )
+    )
+
+
 def marcar_impreso(db: Session, pedido: Pedido) -> Pedido:
     pedido.impreso_at = datetime.now(timezone.utc)
     db.commit()

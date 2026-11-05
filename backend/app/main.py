@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import ws
 from app.config import settings
-from app.routers import auth, carta, pagos, panel, tienda
+from app.routers import auth, carta, impresion, pagos, panel, tienda
 from app.services.vencidos import revisar_cada_tanto
 
 
@@ -41,6 +41,7 @@ app.include_router(auth.router)
 app.include_router(panel.router)
 app.include_router(pagos.router)
 app.include_router(carta.router)
+app.include_router(impresion.router)
 app.include_router(ws.router)
 
 

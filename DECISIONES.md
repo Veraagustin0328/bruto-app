@@ -75,3 +75,16 @@ Rutas nuevas en `app/routers/carta.py` (`/api/carta`), lógica en `app/services/
   - `cantidad_precios` cuenta cada opción por separado: en la maqueta dice "10 precios" porque muestra una sola fila de Extra carne, pero en la base hay una por burger (14 en total).
 - Cada cambio (no la vista previa) manda `{"evento": "carta_actualizada"}` a la sala "panel".
 - Los pedidos ya hechos no cambian (tienen el precio copiado). Hay test.
+
+## B6. Rutas para la ticketera
+
+**Decisión: rol nuevo `impresora`** (en vez de usar un usuario cantina o admin). Motivo: el agente corre todo el día en la PC de la cantina con la clave guardada en un archivo. Si esa clave se filtra, con rol `impresora` solo se pueden ver comandas y marcarlas impresas; con cantina se podría cancelar y cobrar pedidos, y con admin, cambiar precios y usuarios. Mínimo permiso posible.
+
+- Migración `b886e8d1f535_rol_impresora`: agranda `usuarios.rol` de VARCHAR(7) a VARCHAR(9) ("impresora" no entraba). En Postgres es solo `ALTER TABLE usuarios ALTER COLUMN rol TYPE VARCHAR(9)`. El downgrade pasa los usuarios impresora a cocina dados de baja.
+- `alembic/env.py`: sumé `render_as_batch` solo para SQLite (SQLite no sabe hacer ALTER COLUMN). En Postgres no cambia nada.
+- `GET /api/impresion/pendientes`: de la jornada, en `recibido` o `en_preparacion`, con `impreso_at` vacío, ordenados por número. Rol impresora (y admin).
+- `POST /api/impresion/pedidos/{id}/impreso`: usa `marcar_impreso` y avisa al panel (`pedido_actualizado`), así la cantina ve que la comanda salió.
+- WebSocket nuevo `WS /ws/impresion?token=...` (impresora o admin). Le llega `{"evento": "imprimir", "pedido": {...}}` cuando tocan "reimprimir" en el panel y también cuando entra un pedido nuevo a la cocina (efectivo al crearse, MP al pagarse). El agente igual tiene que consultar `/pendientes` al arrancar y cada tanto, por si se cortó el WebSocket.
+- La impresora no entra a `/ws/panel` ni a las rutas del panel.
+- Ojo para el print-agent: el token dura 12 hs, el agente tiene que volver a loguearse cuando le llega un 401.
+- Test nuevo `tests/test_migraciones.py`: corre todas las migraciones en una SQLite vacía, chequea con `alembic check` que coincidan con los modelos, baja hasta el principio y vuelve a subir.

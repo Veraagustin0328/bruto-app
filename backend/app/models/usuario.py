@@ -10,6 +10,7 @@ class Rol(str, enum.Enum):
     admin = "admin"      # Renzo: todo, incluido carta y precios
     cantina = "cantina"  # los chicos de BRUTO: pedidos y cobros
     cocina = "cocina"    # solo la pantalla de comandas
+    impresora = "impresora"  # el agente de la ticketera: solo lee comandas y las marca impresas
 
 
 class Usuario(Base):
