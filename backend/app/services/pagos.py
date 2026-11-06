@@ -28,6 +28,27 @@ class ErrorMercadoPago(Exception):
     """MP no respondió o respondió algo raro. No es culpa del cliente."""
 
 
+class YaHayUnPago(PedidoInvalido):
+    """Hay un pago aprobado o en proceso: no le damos otro link (va como 400).
+    Si el pago estaba aprobado y recién nos enteramos, `cambiado` trae el pedido
+    para avisarle a la cantina."""
+
+    def __init__(self, mensaje: str, cambiado: Pedido | None = None):
+        super().__init__(mensaje)
+        self.cambiado = cambiado
+
+
+# Estados de un pago en MP que todavía pueden terminar aprobados.
+# "pending" incluye los que pagan en efectivo en Rapipago/Pago Fácil
+EN_CURSO = {"pending", "in_process", "authorized", "in_mediation"}
+
+MENSAJE_EN_PROCESO = (
+    "Mercado Pago todavía está procesando un pago de este pedido. "
+    "Esperá unos minutos antes de pagar de nuevo"
+)
+MENSAJE_YA_PAGO = "Este pedido ya está pago. Actualizá la pantalla para verlo"
+
+
 def cliente_mp() -> mercadopago.SDK:
     if not settings.mp_access_token:
         raise ErrorMercadoPago("Falta MP_ACCESS_TOKEN en el .env")
@@ -54,6 +75,18 @@ def crear_preferencia(db: Session, codigo: str) -> dict:
         raise PedidoInvalido("Este pedido se paga en efectivo")
     if pedido.estado != EstadoPedido.pendiente_pago:
         raise PedidoInvalido("Este pedido ya está pago o fue cancelado")
+
+    # Antes de dar otro link, le pregunto a MP si ya pagó o si hay un pago en
+    # camino (ej. MP tardó en avisar). Si no, el cliente podría pagar dos veces.
+    # Si MP no contesta, no doy el link (ErrorMercadoPago → 502): mejor que
+    # espere un minuto a que pague dos veces
+    pagos = buscar_pagos(codigo)
+    estado = estado_en_mp(pagos)
+    if estado == "aprobado":
+        cambiado = verificar_pedido(db, codigo, pagos)
+        raise YaHayUnPago(MENSAJE_YA_PAGO, cambiado)
+    if estado == "en_proceso":
+        raise YaHayUnPago(MENSAJE_EN_PROCESO)
 
     # El link vence a la misma hora en que la tarea de B3 cancela el pedido
     vence = datetime.now(timezone.utc) + timedelta(minutes=settings.minutos_para_pagar)
@@ -172,15 +205,38 @@ def traer_pago(pago_id: str) -> dict | None:
     return respuesta["response"]
 
 
-def verificar_pedido(db: Session, codigo: str) -> Pedido | None:
+def buscar_pagos(codigo: str) -> list[dict]:
+    # Todos los pagos que MP tiene para este pedido, el más nuevo primero
+    try:
+        respuesta = cliente_mp().payment().search(
+            {"external_reference": codigo, "sort": "date_created", "criteria": "desc"}
+        )
+    except ErrorMercadoPago:
+        raise
+    except Exception as e:
+        raise ErrorMercadoPago(f"No se pudo hablar con Mercado Pago: {e}")
+    if respuesta.get("status") != 200:
+        raise ErrorMercadoPago("No se pudo consultar el pago en Mercado Pago")
+    return respuesta["response"].get("results", [])
+
+
+def estado_en_mp(pagos: list[dict]) -> str:
+    """Resume lo que dice MP para el celu:
+    "aprobado", "en_proceso" (puede aprobarse todavía), "rechazado" o "ninguno"."""
+    estados = {p.get("status") for p in pagos}
+    if "approved" in estados:
+        return "aprobado"
+    if estados & EN_CURSO:
+        return "en_proceso"
+    return "rechazado" if pagos else "ninguno"
+
+
+def verificar_pedido(db: Session, codigo: str, pagos: list[dict] | None = None) -> Pedido | None:
     # Le pregunta a MP si hay algún pago aprobado para este pedido.
     # Lo usa el celu al volver de MP, por si el webhook todavía no llegó
     # (o no llega nunca, como en tu compu sin ngrok)
-    respuesta = cliente_mp().payment().search({"external_reference": codigo, "sort": "date_created", "criteria": "desc"})
-    if respuesta.get("status") != 200:
-        raise ErrorMercadoPago("No se pudo consultar el pago en Mercado Pago")
-
-    pagos = respuesta["response"].get("results", [])
+    if pagos is None:
+        pagos = buscar_pagos(codigo)
     aprobado = next((p for p in pagos if p.get("status") == "approved"), None)
     return aplicar_pago(db, aprobado or (pagos[0] if pagos else {}))
 

@@ -1,5 +1,9 @@
+from typing import Literal
+
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
+from starlette.background import BackgroundTask
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -17,30 +21,49 @@ class LinkPago(BaseModel):
     link_pago: str
 
 
-@router.post("/{codigo}/preferencia", response_model=LinkPago)
+class VerificacionOut(PedidoOut):
+    # Lo que dice MP de los pagos de este pedido, para que el celu sepa si
+    # ofrecer "Pagar de nuevo": "aprobado", "en_proceso", "rechazado" o "ninguno"
+    pago_mp: Literal["aprobado", "en_proceso", "rechazado", "ninguno"]
+
+
+@router.post(
+    "/{codigo}/preferencia",
+    response_model=LinkPago,
+    responses={400: {"description": "Pedido en efectivo, ya pago, cancelado, o con un pago de MP en proceso"}},
+)
 def crear_link_de_pago(codigo: str, db: Session = Depends(get_db)):
     # El celu lo llama después de crear el pedido y manda al cliente a link_pago
     try:
         return mp.crear_preferencia(db, codigo)
+    except mp.YaHayUnPago as e:
+        # Si recién nos enteramos de que estaba pago, la cantina lo tiene que ver.
+        # Con HTTPException las background tasks no corren: armo la respuesta a mano
+        tarea = None
+        if e.cambiado is not None:
+            tarea = BackgroundTask(avisar_pedido, e.cambiado.id, mp.evento_para_el_panel(e.cambiado))
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e)}, background=tarea)
     except PedidoInvalido as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except mp.ErrorMercadoPago as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
 
 
-@router.post("/{codigo}/verificar", response_model=PedidoOut)
+@router.post("/{codigo}/verificar", response_model=VerificacionOut)
 def verificar_pago(codigo: str, avisos: BackgroundTasks, db: Session = Depends(get_db)):
-    # El celu lo llama cuando el cliente vuelve de MP
+    # El celu lo llama cuando el cliente vuelve de MP, y antes de ofrecer "Pagar de nuevo"
     if buscar_por_codigo(db, codigo) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontramos ese pedido")
     try:
-        cambiado = mp.verificar_pedido(db, codigo)
+        pagos = mp.buscar_pagos(codigo)
+        cambiado = mp.verificar_pedido(db, codigo, pagos)
     except mp.ErrorMercadoPago as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
 
     if cambiado is not None:
         avisos.add_task(avisar_pedido, cambiado.id, mp.evento_para_el_panel(cambiado))
-    return buscar_por_codigo(db, codigo)
+    pedido = PedidoOut.model_validate(buscar_por_codigo(db, codigo))
+    return VerificacionOut(**pedido.model_dump(), pago_mp=mp.estado_en_mp(pagos))
 
 
 def procesar_pago(db: Session, pago_id: str):

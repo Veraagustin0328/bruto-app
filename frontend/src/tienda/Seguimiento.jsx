@@ -10,6 +10,8 @@ import useSocket from "../lib/useSocket";
 
 const VERIFICAR_CADA_MS = 5000;
 const VERIFICAR_HASTA_MS = 2 * 60 * 1000;
+// Si MP dice que el pago está en proceso, seguimos esperando más tranquilos
+const EN_PROCESO_CADA_MS = 20000;
 
 const ORDEN = ["recibido", "en_preparacion", "listo", "entregado"];
 
@@ -129,6 +131,9 @@ export default function Seguimiento() {
   const [sinConfirmar, setSinConfirmar] = useState(params.get("pago") === "error");
   const [pagando, setPagando] = useState(false);
   const [errorPago, setErrorPago] = useState(null);
+  // Lo que dice MP de este pedido: "ninguno", "en_proceso", "rechazado" o "aprobado".
+  // null = todavía no le preguntamos
+  const [pagoMp, setPagoMp] = useState(null);
   const estadoAnterior = useRef(null);
 
   const cargar = useCallback(async () => {
@@ -148,7 +153,9 @@ export default function Seguimiento() {
   }, [codigo, cargar]);
 
   const enPendientePago = pedido?.estado === "pendiente_pago";
-  const rechazado = enPendientePago && pedido?.estado_pago === "rechazado";
+  const enProceso = enPendientePago && pagoMp === "en_proceso";
+  // Solo ofrecemos pagar de nuevo si MP dice que no hay ningún pago vivo
+  const rechazado = enPendientePago && (pagoMp === "rechazado" || (pagoMp === null && pedido?.estado_pago === "rechazado"));
 
   // Volvió de Mercado Pago: le preguntamos al backend si ya se pagó,
   // cada 5 segundos, hasta que cambie o pasen 2 minutos.
@@ -168,11 +175,14 @@ export default function Seguimiento() {
     setSinConfirmar(false);
 
     async function verificar() {
+      let estadoMp = null;
       try {
-        const p = await pagos.verificar(codigo);
+        const { pago_mp, ...p } = await pagos.verificar(codigo);
         if (fin) return;
         setPedido(p);
-        if (p.estado !== "pendiente_pago" || p.estado_pago === "rechazado") {
+        setPagoMp(pago_mp);
+        estadoMp = pago_mp;
+        if (p.estado !== "pendiente_pago" || pago_mp === "rechazado") {
           setVerificando(false);
           return;
         }
@@ -181,6 +191,12 @@ export default function Seguimiento() {
       }
       if (fin) return;
       if (Date.now() - arranque >= VERIFICAR_HASTA_MS) {
+        // Pago en proceso (ej. tarjeta en revisión): nunca le ofrecemos pagar
+        // de nuevo, seguimos preguntando cada tanto mientras esté en la pantalla
+        if (estadoMp === "en_proceso") {
+          timer = setTimeout(verificar, EN_PROCESO_CADA_MS);
+          return;
+        }
         setVerificando(false);
         setSinConfirmar(true);
         return;
@@ -218,11 +234,23 @@ export default function Seguimiento() {
     setPagando(true);
     setErrorPago(null);
     try {
+      // Antes de mandarlo a pagar otra vez, le preguntamos a MP cómo viene:
+      // si ya pagó o está en proceso, no lo dejamos pagar dos veces
+      const { pago_mp, ...p } = await pagos.verificar(codigo);
+      setPedido(p);
+      setPagoMp(pago_mp);
+      if (p.estado !== "pendiente_pago" || !["ninguno", "rechazado"].includes(pago_mp)) {
+        setPagando(false);
+        if (p.estado === "pendiente_pago") setCiclo((c) => c + 1); // en proceso: seguimos esperando
+        return;
+      }
       const { link_pago } = await pagos.preferencia(codigo);
       window.location.assign(link_pago);
     } catch (e) {
+      // El backend también frena si hay un pago en camino (400): seguimos esperando
       setErrorPago(e.message);
       setPagando(false);
+      if (e.status === 400) setCiclo((c) => c + 1);
     }
   }
 
@@ -300,14 +328,25 @@ export default function Seguimiento() {
           </div>
         )}
 
-        {enPendientePago && verificando && (
+        {enProceso ? (
           <div role="status" className="rounded-2xl bg-mp/15 border border-mp/40 p-4 text-center">
-            <p className="font-semibold">Confirmando tu pago...</p>
-            <p className="text-tenue text-xs mt-1">Puede tardar unos segundos. No cierres esta pantalla.</p>
+            <p className="font-semibold">Mercado Pago todavía está procesando tu pago</p>
+            <p className="text-tenue text-xs mt-1">
+              No hace falta que pagues de nuevo. Apenas se apruebe, tu pedido pasa a la cocina y lo ves acá.
+            </p>
+            {errorPago && <p className="text-tenue text-xs mt-2">{errorPago}</p>}
           </div>
+        ) : (
+          enPendientePago &&
+          verificando && (
+            <div role="status" className="rounded-2xl bg-mp/15 border border-mp/40 p-4 text-center">
+              <p className="font-semibold">Confirmando tu pago...</p>
+              <p className="text-tenue text-xs mt-1">Puede tardar unos segundos. No cierres esta pantalla.</p>
+            </div>
+          )
         )}
 
-        {enPendientePago && !verificando && (rechazado || sinConfirmar) && (
+        {enPendientePago && !verificando && !enProceso && (rechazado || sinConfirmar) && (
           <div role="alert" className="rounded-2xl bg-carbon border border-linea p-4 grid gap-3">
             <p className="text-sm">
               {rechazado
@@ -321,7 +360,7 @@ export default function Seguimiento() {
               disabled={pagando}
               className="rounded-xl py-3 font-bold text-sm bg-mp text-white disabled:opacity-60"
             >
-              {pagando ? "YENDO A MERCADO PAGO..." : "PAGAR CON MERCADO PAGO"}
+              {pagando ? "REVISANDO TU PAGO..." : "PAGAR CON MERCADO PAGO"}
             </button>
             {!rechazado && (
               <button type="button" onClick={() => setCiclo((c) => c + 1)} className="text-tenue text-sm underline underline-offset-2">
