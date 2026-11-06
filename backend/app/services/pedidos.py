@@ -4,6 +4,7 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
@@ -128,7 +129,18 @@ def armar_item(producto: Producto, item: ItemNuevo) -> PedidoItem:
 # ---------- crear el pedido ----------
 
 
-def crear_pedido(db: Session, datos: PedidoNuevo) -> Pedido:
+def buscar_por_clave(db: Session, clave: str) -> Pedido | None:
+    return db.scalar(
+        select(Pedido)
+        .where(Pedido.clave_idempotencia == clave)
+        .options(selectinload(Pedido.items).selectinload(PedidoItem.opciones))
+    )
+
+
+def crear_pedido(db: Session, datos: PedidoNuevo, clave: str | None = None) -> Pedido:
+    """Arma y guarda el pedido. Si viene `clave` (el Idempotency-Key del celu)
+    y dos pedidos con la misma llegan a la vez, el segundo choca con la columna
+    única: ahí devuelvo el primero en vez de explotar (ver crear_o_repetir)."""
     ids = {item.producto_id for item in datos.items}
     productos = {
         p.id: p
@@ -165,12 +177,30 @@ def crear_pedido(db: Session, datos: PedidoNuevo) -> Pedido:
         estado=estado,
         total=total,
         items=items,
+        clave_idempotencia=clave,
     )
 
     db.add(pedido)
     db.commit()
     db.refresh(pedido)
     return pedido
+
+
+def crear_o_repetir(db: Session, datos: PedidoNuevo, clave: str | None) -> tuple[Pedido, bool]:
+    """Devuelve (pedido, es_nuevo). Si la clave ya se usó, el pedido que ya estaba."""
+    if clave:
+        existente = buscar_por_clave(db, clave)
+        if existente is not None:
+            return existente, False
+    try:
+        return crear_pedido(db, datos, clave), True
+    except IntegrityError:
+        # Dos reintentos llegaron casi juntos y el otro ganó: devuelvo ese
+        db.rollback()
+        existente = buscar_por_clave(db, clave) if clave else None
+        if existente is None:
+            raise
+        return existente, False
 
 
 def activos_del_telefono(db: Session, telefono: str) -> int:

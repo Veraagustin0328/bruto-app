@@ -51,6 +51,10 @@ class Pedido(Base):
         String(32), unique=True, index=True, default=nuevo_codigo
     )
 
+    # La "llave" que manda el celu en el header Idempotency-Key (una por intento
+    # de checkout). Si con mala señal reintenta, llega la misma y no se duplica
+    clave_idempotencia: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+
     # Número corto que ve el cliente y se grita en la cantina (#042).
     # Lo asigna el service, se reinicia en cada jornada
     numero: Mapped[int] = mapped_column(Integer, index=True)

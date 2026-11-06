@@ -4,6 +4,7 @@ import { pagos, tienda } from "../api";
 import { Campo, Radio, Stepper, claseInput } from "../componentes/Controles";
 import { CANCHAS, LINK_PEDIDOSYA } from "../config";
 import { CLAVES, local } from "../lib/almacen";
+import { llaveDelIntento, olvidarIntento } from "../lib/llave";
 import { precio, textoOpciones } from "../lib/formato";
 import { useCarrito } from "./carrito";
 
@@ -156,6 +157,7 @@ export default function Checkout({ paso, irA, donde, estadoTienda }) {
 
     let pedido;
     try {
+      // Misma llave mientras no entre: si se cortó la señal y reintenta, no se duplica
       pedido = await tienda.crearPedido({
         modo,
         ubicacion: modo === "comer_adentro" ? ubicacion.trim() : null,
@@ -170,16 +172,23 @@ export default function Checkout({ paso, irA, donde, estadoTienda }) {
           nota: i.nota,
           opciones: i.opciones.map((o) => ({ opcion_id: o.opcion_id, cantidad: o.cantidad })),
         })),
-      });
+      }, llaveDelIntento());
     } catch (err) {
-      // El backend ya manda el mensaje escrito para el cliente
-      setErrorEnvio(err.message);
+      // El backend ya manda el mensaje escrito para el cliente. Sin conexión no
+      // sabemos si llegó: puede tocar de nuevo tranquilo, con la misma llave no se duplica
+      setErrorEnvio(
+        err.status === 0
+          ? "Se cortó la señal y no sabemos si tu pedido llegó. Tocá el botón de nuevo: si ya había entrado, no se duplica."
+          : err.message,
+      );
       setEnviando(false);
       enviandoRef.current = false;
       return;
     }
 
-    // El pedido ya existe: guardo lo que sirve para la próxima y vacío el carrito
+    // El pedido ya existe: guardo lo que sirve para la próxima y vacío el carrito.
+    // La llave ya cumplió: el próximo pedido lleva otra
+    olvidarIntento();
     local.guardar(CLAVES.datos, { nombre: nombre.trim(), apellido: apellido.trim(), telefono: telefono.trim() });
     local.guardar(CLAVES.ultimoPedido, { codigo: pedido.codigo, numero: pedido.numero, creado: Date.now() });
     vaciar();

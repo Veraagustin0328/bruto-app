@@ -35,4 +35,5 @@ export const CLAVES = {
   datos: "bruto.datos",
   ultimoPedido: "bruto.ultimo-pedido",
   intro: "bruto.intro",
+  intento: "bruto.intento", // Idempotency-Key del checkout en curso
 };

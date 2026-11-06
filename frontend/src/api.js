@@ -88,12 +88,15 @@ function mensajeDeError(status, cuerpo) {
 
 // ---------- el fetch de siempre ----------
 
-async function pedir(ruta, { metodo = "GET", body, form, conToken = false } = {}) {
-  const headers = {};
+async function pedir(ruta, { metodo = "GET", body, form, archivo, conToken = false, extra = {} } = {}) {
+  const headers = { ...extra };
   let cuerpo;
 
   if (form) {
     cuerpo = new URLSearchParams(form);
+  } else if (archivo) {
+    // multipart: el navegador pone solo el Content-Type con el boundary
+    cuerpo = archivo;
   } else if (body !== undefined) {
     headers["Content-Type"] = "application/json";
     cuerpo = JSON.stringify(body);
@@ -133,7 +136,10 @@ async function pedir(ruta, { metodo = "GET", body, form, conToken = false } = {}
 export const tienda = {
   menu: () => pedir("/api/tienda/menu"),
   estado: () => pedir("/api/tienda/estado"),
-  crearPedido: (pedido) => pedir("/api/tienda/pedidos", { metodo: "POST", body: pedido }),
+  // clave: una por intento de checkout. Si se reintenta con la misma, el backend
+  // devuelve el pedido que ya había en vez de crear otro (mala señal en la cancha)
+  crearPedido: (pedido, clave) =>
+    pedir("/api/tienda/pedidos", { metodo: "POST", body: pedido, extra: clave ? { "Idempotency-Key": clave } : {} }),
   pedido: (codigo) => pedir(`/api/tienda/pedidos/${encodeURIComponent(codigo)}`),
 };
 

@@ -1,4 +1,6 @@
-﻿from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+﻿import re
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -10,7 +12,13 @@ from app.schemas.catalogo import CategoriaOut
 from app.schemas.config import EstadoTienda
 from app.schemas.pedido import PedidoNuevo, PedidoOut
 from app.services.config import estado_tienda, motivo_para_no_aceptar
-from app.services.pedidos import PedidoInvalido, activos_del_telefono, buscar_por_codigo, crear_pedido
+from app.services.pedidos import (
+    PedidoInvalido,
+    activos_del_telefono,
+    buscar_por_clave,
+    buscar_por_codigo,
+    crear_o_repetir,
+)
 from app.ws import avisar_pedido
 
 # Todo lo de acá es público: lo usa el cliente desde el celu, sin login
@@ -49,10 +57,47 @@ def ver_estado(db: Session = Depends(get_db)):
     return estado_tienda(db)
 
 
-@router.post("/pedidos", response_model=PedidoOut, status_code=status.HTTP_201_CREATED)
+def leer_clave(clave: str | None) -> str | None:
+    # El celu manda un crypto.randomUUID() por intento. Acepto algo parecido y nada raro
+    if clave is None:
+        return None
+    clave = clave.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", clave):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El Idempotency-Key tiene que tener entre 8 y 64 letras, números o guiones",
+        )
+    return clave
+
+
+@router.post(
+    "/pedidos",
+    response_model=PedidoOut,
+    status_code=status.HTTP_201_CREATED,
+    responses={200: {"description": "Ese Idempotency-Key ya se usó: devuelve el pedido que ya existía"}},
+)
 def hacer_pedido(
-    datos: PedidoNuevo, request: Request, avisos: BackgroundTasks, db: Session = Depends(get_db)
+    datos: PedidoNuevo,
+    request: Request,
+    response: Response,
+    avisos: BackgroundTasks,
+    db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="Idempotency-Key",
+        description="Un código random por intento de checkout. Si se repite, no se crea otro pedido",
+    ),
 ):
+    clave = leer_clave(idempotency_key)
+
+    # Reintento con mala señal: el pedido ya entró la primera vez. Lo devuelvo
+    # antes de mirar horario y límites (no cuenta como pedido nuevo)
+    if clave:
+        existente = buscar_por_clave(db, clave)
+        if existente is not None:
+            response.status_code = status.HTTP_200_OK
+            return existente
+
     # Cerrado o pausado (cocina desbordada): no entra nada
     motivo = motivo_para_no_aceptar(db)
     if motivo:
@@ -72,9 +117,14 @@ def hacer_pedido(
         )
 
     try:
-        pedido = crear_pedido(db, datos)
+        pedido, es_nuevo = crear_o_repetir(db, datos, clave)
     except PedidoInvalido as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    if not es_nuevo:
+        # Dos reintentos casi juntos: el otro ya lo creó y avisó
+        response.status_code = status.HTTP_200_OK
+        return buscar_por_codigo(db, pedido.codigo)
 
     # Solo cuento los que entraron: un error del cliente no le gasta el cupo
     limites.anotar_pedido(ip)
