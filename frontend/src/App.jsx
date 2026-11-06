@@ -5,11 +5,10 @@ import Seguimiento from "./tienda/Seguimiento";
 import Login from "./panel/Login";
 import Panel from "./panel/Panel";
 import Cocina from "./panel/Cocina";
-import Marco from "./panel/Marco";
 import CartaPrecios from "./panel/carta/CartaPrecios";
 import Configuracion from "./panel/Configuracion";
 import Usuarios from "./panel/Usuarios";
-import { Titulo } from "./panel/comunes";
+import Caja from "./panel/Caja";
 import { RutaProtegida } from "./panel/sesion";
 
 function NoExiste() {
@@ -22,15 +21,6 @@ function NoExiste() {
         </Link>
       </div>
     </main>
-  );
-}
-
-// Lugar reservado mientras se arma cada pantalla
-function Pronto({ sesion, titulo }) {
-  return (
-    <Marco sesion={sesion}>
-      <Titulo bajada="Esta pantalla está en camino.">{titulo}</Titulo>
-    </Marco>
   );
 }
 
@@ -58,7 +48,7 @@ export default function App() {
         path="/panel/carta"
         element={<Protegida ruta="/panel/carta">{(s) => <CartaPrecios sesion={s} />}</Protegida>}
       />
-      <Route path="/panel/caja" element={<Protegida ruta="/panel/caja">{(s) => <Pronto sesion={s} titulo="Caja del día" />}</Protegida>} />
+      <Route path="/panel/caja" element={<Protegida ruta="/panel/caja">{(s) => <Caja sesion={s} />}</Protegida>} />
       <Route
         path="/panel/config"
         element={<Protegida ruta="/panel/config">{(s) => <Configuracion sesion={s} />}</Protegida>}
