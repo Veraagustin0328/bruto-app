@@ -76,3 +76,13 @@ export function textoOpciones(opciones = []) {
     })
     .join(" · ");
 }
+
+// Lo que escribe Renzo en un precio → número. Acepta "13.500", "13500",
+// "$ 13.500", "2,5". Devuelve NaN si no se entiende
+export function leerPrecio(texto) {
+  let t = String(texto ?? "").replace(/[$\s]/g, "");
+  if (!t) return NaN;
+  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
+  return /^\d+(\.\d{1,2})?$/.test(t) ? Number(t) : NaN;
+}

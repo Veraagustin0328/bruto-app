@@ -56,6 +56,24 @@ const CAMPOS = {
   items: "el pedido",
   username: "el email",
   password: "la contraseña",
+  email: "el email",
+  precio: "el precio",
+  precio_extra: "el precio extra",
+  cantidad_max: "la cantidad máxima",
+  max_selecciones: "el tope de opciones",
+  descripcion: "la descripción",
+  etiqueta: "la etiqueta",
+  porcentaje: "el porcentaje",
+  link_pedidosya: "el link de PedidosYa",
+  mensaje_cerrado: "el mensaje de cerrado",
+  mensaje_pausado: "el mensaje de pausa",
+  mensaje: "el mensaje",
+  abre: "la hora de apertura",
+  cierra: "la hora de cierre",
+  dias: "el horario",
+  fecha: "la fecha",
+  desde: "la fecha de inicio",
+  hasta: "la fecha de fin",
 };
 
 // FastAPI devuelve los errores de validación (422) como lista y en inglés.
@@ -170,6 +188,77 @@ export const panel = {
     pedir(`/api/panel/pedidos/${id}/cobrar-y-entregar`, { metodo: "POST", conToken: true }),
   reimprimir: (id) =>
     pedir(`/api/panel/pedidos/${id}/reimprimir`, { metodo: "POST", conToken: true }),
+};
+
+// Atajos para las rutas del panel (todas con token)
+const conToken = (ruta, opciones = {}) => pedir(ruta, { ...opciones, conToken: true });
+const json = (metodo) => (ruta, body) => conToken(ruta, { metodo, body });
+const post = json("POST");
+const patch = json("PATCH");
+const put = json("PUT");
+const borrar = (ruta) => conToken(ruta, { metodo: "DELETE" });
+
+// ---------- carta y precios (admin; prender y apagar también la cantina) ----------
+
+export const carta = {
+  ver: () => conToken("/api/carta"),
+  crearCategoria: (datos) => post("/api/carta/categorias", datos),
+  editarCategoria: (id, cambios) => patch(`/api/carta/categorias/${id}`, cambios),
+  borrarCategoria: (id) => borrar(`/api/carta/categorias/${id}`),
+  ordenarCategorias: (ids) => put("/api/carta/categorias/orden", { ids }),
+  ordenarProductos: (categoriaId, ids) => put(`/api/carta/categorias/${categoriaId}/orden-productos`, { ids }),
+  crearProducto: (datos) => post("/api/carta/productos", datos),
+  editarProducto: (id, cambios) => patch(`/api/carta/productos/${id}`, cambios),
+  borrarProducto: (id) => borrar(`/api/carta/productos/${id}`),
+  disponibleProducto: (id, disponible) => patch(`/api/carta/productos/${id}/disponible`, { disponible }),
+  subirFoto: (id, archivo) => {
+    const form = new FormData();
+    form.append("foto", archivo);
+    return conToken(`/api/carta/productos/${id}/foto`, { metodo: "POST", archivo: form });
+  },
+  borrarFoto: (id) => borrar(`/api/carta/productos/${id}/foto`),
+  crearGrupo: (productoId, datos) => post(`/api/carta/productos/${productoId}/grupos`, datos),
+  editarGrupo: (id, cambios) => patch(`/api/carta/grupos/${id}`, cambios),
+  borrarGrupo: (id) => borrar(`/api/carta/grupos/${id}`),
+  crearOpcion: (grupoId, datos) => post(`/api/carta/grupos/${grupoId}/opciones`, datos),
+  editarOpcion: (id, cambios) => patch(`/api/carta/opciones/${id}`, cambios),
+  borrarOpcion: (id) => borrar(`/api/carta/opciones/${id}`),
+  disponibleOpcion: (id, disponible) => patch(`/api/carta/opciones/${id}/disponible`, { disponible }),
+  vistaPrevia: (datos) => post("/api/carta/aumento/vista-previa", datos),
+  aplicarAumento: (datos) => post("/api/carta/aumento/aplicar", datos),
+};
+
+// ---------- configuración: horario, pausa, link de PedidosYa ----------
+
+export const config = {
+  ver: () => conToken("/api/config"),
+  editar: (cambios) => patch("/api/config", cambios),
+  horarios: (dias) => put("/api/config/horarios", { dias }),
+  // La pausa la puede tocar también la cantina
+  pausa: () => conToken("/api/config/pausa"),
+  pausar: (pausado) => put("/api/config/pausa", { pausado }),
+};
+
+// ---------- usuarios (solo admin) ----------
+
+export const usuarios = {
+  lista: () => conToken("/api/auth/usuarios"),
+  crear: (datos) => post("/api/auth/usuarios", datos),
+  editar: (id, cambios) => patch(`/api/auth/usuarios/${id}`, cambios),
+};
+
+// ---------- caja del día ----------
+
+export const caja = {
+  // fecha "AAAA-MM-DD"; sin fecha, la jornada de hoy
+  dia: (fecha) => conToken(`/api/panel/caja${fecha ? `?fecha=${encodeURIComponent(fecha)}` : ""}`),
+  historial: (desde, hasta) => {
+    const q = new URLSearchParams();
+    if (desde) q.set("desde", desde);
+    if (hasta) q.set("hasta", hasta);
+    const texto = q.toString();
+    return conToken(`/api/panel/caja/historial${texto ? `?${texto}` : ""}`);
+  },
 };
 
 // ---------- WebSockets ----------

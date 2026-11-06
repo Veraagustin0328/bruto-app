@@ -178,3 +178,17 @@ export function Titulo({ children, bajada, derecha }) {
 export function Esqueleto({ alto = "h-40", className = "" }) {
   return <div className={`${alto} rounded-2xl bg-negro border border-gris animate-pulse ${className}`} aria-label="Cargando" />;
 }
+
+// true si la pantalla es al menos así de ancha (para no renderizar dos veces lo mismo)
+export function useAncho(minimo) {
+  const consulta = `(min-width: ${minimo}px)`;
+  const [si, setSi] = useState(() => window.matchMedia?.(consulta).matches ?? true);
+  useEffect(() => {
+    const m = window.matchMedia?.(consulta);
+    if (!m) return undefined;
+    const alCambiar = () => setSi(m.matches);
+    m.addEventListener("change", alCambiar);
+    return () => m.removeEventListener("change", alCambiar);
+  }, [consulta]);
+  return si;
+}
