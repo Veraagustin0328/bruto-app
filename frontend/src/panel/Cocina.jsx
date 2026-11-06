@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { panel } from "../api";
 import { fecha, numeroPedido, reloj, textoOpciones } from "../lib/formato";
@@ -113,8 +113,45 @@ function Comanda({ p, nuevo, ahora, onActualizado }) {
   );
 }
 
+// "#042 listo · Deshacer": por si tocaron LISTO sin querer (el pedido ya se fue de la pantalla)
+function Deshacer({ pedido, onDeshacer, onCerrar }) {
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    const t = setTimeout(onCerrar, 10000);
+    return () => clearTimeout(t);
+  }, [pedido.id, onCerrar]);
+
+  async function deshacer() {
+    setOcupado(true);
+    setError(null);
+    try {
+      await onDeshacer(pedido);
+    } catch (e) {
+      setError(e.message);
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <div className="fixed bottom-4 inset-x-0 z-50 flex justify-center px-4" role="status">
+      <div className="max-w-md w-full rounded-2xl bg-gris shadow-lg px-4 py-3 flex items-center justify-between gap-3">
+        <span className="font-semibold">
+          <span className="num">{numeroPedido(pedido.numero)}</span> listo
+          {error && <small className="block text-naranja font-normal">{error}</small>}
+        </span>
+        <button type="button" onClick={deshacer} disabled={ocupado} className="px-4 py-2.5 rounded-xl bg-negro font-bold tracking-wide text-sm disabled:opacity-60">
+          {ocupado ? "..." : "DESHACER"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Cocina({ sesion }) {
   const salir = useSalir();
+  const [ultimoListo, setUltimoListo] = useState(null);
+  const cerrarDeshacer = useCallback(() => setUltimoListo(null), []);
   const { sonar, habilitado } = useSonido();
   const ahora = useAhora(1000);
   const prendida = usePantallaPrendida();
@@ -129,11 +166,11 @@ export default function Cocina({ sesion }) {
       <AvisoConexion conectado={conectado} error={error} onReintentar={recargar} recargando={recargando} />
       <AvisoSonido habilitado={habilitado} />
 
-      <header className="flex justify-between items-center gap-4 px-5 md:px-6 py-3.5 border-b border-gris">
-        <h1 className="text-[32px]">
-          Cocina <span className="text-naranja">· {lista.length} en marcha</span>
+      <header className="flex justify-between items-center gap-3 px-4 md:px-6 py-3.5 border-b border-gris">
+        <h1 className="text-[26px] sm:text-[32px] whitespace-nowrap">
+          Cocina <span className="text-naranja num">· {lista.length}<span className="hidden sm:inline"> en marcha</span></span>
         </h1>
-        <div className="flex items-center gap-4 text-[13px] text-tenue">
+        <div className="flex items-center gap-3 sm:gap-4 text-[13px] text-tenue">
           <span className="font-semibold text-texto text-lg num">{horaActual}</span>
           <EnVivo conectado={conectado} />
           {!prendida && "wakeLock" in navigator && <span className="hidden md:inline text-alerta text-xs">La pantalla se puede apagar</span>}
@@ -156,9 +193,32 @@ export default function Cocina({ sesion }) {
             Nada en la plancha. Cuando entre un pedido aparece acá.
           </p>
         ) : (
-          lista.map((p) => <Comanda key={p.id} p={p} nuevo={destacados.has(p.id)} ahora={ahora} onActualizado={actualizar} />)
+          lista.map((p) => (
+            <Comanda
+              key={p.id}
+              p={p}
+              nuevo={destacados.has(p.id)}
+              ahora={ahora}
+              onActualizado={(nuevo) => {
+                actualizar(nuevo);
+                if (nuevo.estado === "listo") setUltimoListo(nuevo);
+              }}
+            />
+          ))
         )}
       </main>
+
+      {ultimoListo && (
+        <Deshacer
+          key={ultimoListo.id}
+          pedido={ultimoListo}
+          onCerrar={cerrarDeshacer}
+          onDeshacer={async (p) => {
+            actualizar(await panel.cambiarEstado(p.id, "en_preparacion"));
+            setUltimoListo(null);
+          }}
+        />
+      )}
     </div>
   );
 }

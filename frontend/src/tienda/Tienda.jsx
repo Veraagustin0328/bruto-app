@@ -1,18 +1,24 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { tienda } from "../api";
 import Logo from "../componentes/Logo";
-import { CLAVES, local, sesion } from "../lib/almacen";
+import { CLAVES, sesion } from "../lib/almacen";
 import { hora, numeroPedido, precio } from "../lib/formato";
+import { misPedidos, olvidarPedido } from "../lib/misPedidos";
 import { Carta, EsqueletoCarta } from "./Carta";
 import Checkout from "./Checkout";
 import HojaProducto from "./HojaProducto";
 import IntroBruto from "./IntroBruto";
 import { useCarrito } from "./carrito";
+import useEstadoTienda from "./useEstadoTienda";
 
-// Arriba a la derecha: "Cantina abierta hasta las 00:30" o "Cerrada"
-function EstadoCantina({ estado }) {
-  if (!estado) return null;
+// Arriba a la derecha: "Cantina abierta hasta las 00:30", "Cerrada" o "En pausa"
+function EstadoCantina({ estado, fallo }) {
+  if (!estado) {
+    return fallo ? (
+      <div className="text-[11.5px] text-tenue text-right leading-tight max-w-36">No pudimos ver si la cantina está abierta</div>
+    ) : null;
+  }
   if (estado.acepta_pedidos) {
     return (
       <div className="text-[11.5px] text-tenue text-right leading-tight">
@@ -25,22 +31,21 @@ function EstadoCantina({ estado }) {
   }
   return (
     <div className="text-[11.5px] text-right leading-tight">
-      <b className="block text-alerta font-semibold">{estado.pausado ? "Pedidos en pausa" : "Cantina cerrada"}</b>
+      <b className="block text-alerta font-semibold">{estado.pausado && estado.abierto ? "Pedidos en pausa" : "Cantina cerrada"}</b>
     </div>
   );
 }
 
-export function Cabecera({ estado }) {
+export function Cabecera({ estado, fallo }) {
   return (
     <header className="flex items-center justify-between px-4 pt-3 pb-1">
       <Logo />
-      <EstadoCantina estado={estado} />
+      <EstadoCantina estado={estado} fallo={fallo} />
     </header>
   );
 }
 
-// Si tiene un pedido en curso de hace poco, un acceso para volver a verlo
-const ULTIMO_VALE_MS = 12 * 60 * 60 * 1000;
+// Si tiene pedidos en curso de hace poco, un acceso a cada uno
 const NOMBRE_ESTADO = {
   pendiente_pago: "esperando el pago",
   recibido: "recibido",
@@ -48,24 +53,31 @@ const NOMBRE_ESTADO = {
   listo: "listo",
 };
 
-function UltimoPedido() {
-  const [pedido, setPedido] = useState(null);
+function MisPedidos() {
+  const [pedidos, setPedidos] = useState([]);
 
   useEffect(() => {
-    const ultimo = local.leer(CLAVES.ultimoPedido);
-    if (!ultimo?.codigo || Date.now() - (ultimo.creado || 0) > ULTIMO_VALE_MS) return;
-    tienda
-      .pedido(ultimo.codigo)
-      .then((p) => {
-        if (NOMBRE_ESTADO[p.estado]) setPedido(p);
-        else local.guardar(CLAVES.ultimoPedido, null); // ya terminó: no lo muestro más
-      })
-      .catch(() => {});
+    let vivo = true;
+    Promise.all(
+      misPedidos().map((m) =>
+        tienda
+          .pedido(m.codigo)
+          .then((p) => {
+            if (NOMBRE_ESTADO[p.estado]) return p;
+            olvidarPedido(m.codigo); // ya terminó: no lo muestro más
+            return null;
+          })
+          .catch(() => null),
+      ),
+    ).then((lista) => vivo && setPedidos(lista.filter(Boolean).sort((a, b) => a.numero - b.numero)));
+    return () => {
+      vivo = false;
+    };
   }, []);
 
-  if (!pedido) return null;
-  return (
+  return pedidos.map((pedido) => (
     <Link
+      key={pedido.codigo}
       to={`/pedido/${pedido.codigo}`}
       className="mx-4 mt-2 mb-1 flex items-center justify-between gap-3 rounded-xl border border-naranja/50 bg-naranja/10 px-3.5 py-2.5 text-sm"
     >
@@ -74,7 +86,7 @@ function UltimoPedido() {
       </span>
       <span className="text-naranja font-semibold whitespace-nowrap">Ver mi pedido ›</span>
     </Link>
-  );
+  ));
 }
 
 export function ErrorConReintento({ mensaje, onReintentar }) {
@@ -118,22 +130,22 @@ function BarraCarrito({ onVer }) {
 
 export default function Tienda() {
   const [menu, setMenu] = useState(null);
-  const [estado, setEstado] = useState(null);
   const [error, setError] = useState(null);
-  const [abierto, setAbierto] = useState(null); // producto en la hoja de abajo
+  const { estado, fallo } = useEstadoTienda();
   const { agregar } = useCarrito();
-  const cerrarHoja = useCallback(() => setAbierto(null), []);
 
-  // El checkout va en la misma página con ?paso=pedido / ?paso=datos,
-  // así el botón "atrás" del celu anda. ?donde=Cancha 3 viene del QR de la cancha
+  // El checkout va en la misma página con ?paso=pedido / ?paso=datos, y la hoja
+  // del producto con ?ver=<id>: así el botón "atrás" del celu vuelve un paso o
+  // cierra la hoja. ?donde=Cancha 3 viene del QR de la cancha
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
   const paso = ["pedido", "datos"].includes(params.get("paso")) ? params.get("paso") : null;
   const donde = (params.get("donde") || "").trim().slice(0, 120);
+  const verId = Number(params.get("ver")) || null;
 
   // La intro sale una sola vez por visita, y no si entra directo al checkout
-  const [verIntro, setVerIntro] = useState(() => !paso && !sesion.leer(CLAVES.intro));
+  const [verIntro, setVerIntro] = useState(() => !paso && !verId && !sesion.leer(CLAVES.intro));
   useEffect(() => {
     if (verIntro) sesion.guardar(CLAVES.intro, 1);
   }, [verIntro]);
@@ -150,6 +162,36 @@ export default function Tienda() {
     else setParams(sig, { replace: vuelve });
   }
 
+  // El producto abierto en la hoja (solo si existe y se puede pedir)
+  const abierto = useMemo(() => {
+    if (!verId || !menu) return null;
+    for (const c of menu) {
+      const p = c.productos.find((x) => x.id === verId);
+      if (p) return p.disponible ? p : null;
+    }
+    return null;
+  }, [verId, menu]);
+
+  const abrirHoja = useCallback(
+    (producto) => {
+      const sig = new URLSearchParams(params);
+      sig.set("ver", producto.id);
+      setParams(sig, { state: { hoja: true } });
+    },
+    [params, setParams],
+  );
+
+  const cerrarHoja = useCallback(() => {
+    // Si la abrimos nosotros, "atrás" (así no queda en el historial); si vino
+    // con ?ver= en el link, saco el parámetro
+    if (location.state?.hoja) navigate(-1);
+    else {
+      const sig = new URLSearchParams(params);
+      sig.delete("ver");
+      setParams(sig, { replace: true });
+    }
+  }, [location.state, navigate, params, setParams]);
+
   const cargar = useCallback(async () => {
     setError(null);
     setMenu(null);
@@ -158,21 +200,19 @@ export default function Tienda() {
     } catch (e) {
       setError(e.message);
     }
-    // El estado (abierto/cerrado) no es vital: si falla, la carta se ve igual
-    tienda.estado().then(setEstado).catch(() => {});
   }, []);
 
   useEffect(() => {
     cargar();
   }, [cargar]);
 
-  const cabecera = <Cabecera estado={estado} />;
+  const cabecera = <Cabecera estado={estado} fallo={fallo} />;
   const avisos = (
     <>
       {estado && !estado.acepta_pedidos && estado.mensaje && (
         <p className="mx-4 mt-2 p-3 rounded-xl bg-alerta/15 text-alerta text-sm">{estado.mensaje}</p>
       )}
-      <UltimoPedido />
+      <MisPedidos />
     </>
   );
 
@@ -199,7 +239,7 @@ export default function Tienda() {
           <EsqueletoCarta />
         </>
       ) : (
-        <Carta categorias={menu} arriba={cabecera} avisos={avisos} onElegir={setAbierto} />
+        <Carta categorias={menu} arriba={cabecera} avisos={avisos} onElegir={abrirHoja} />
       )}
 
       <BarraCarrito onVer={() => irA("pedido")} />
@@ -208,11 +248,12 @@ export default function Tienda() {
 
       {abierto && (
         <HojaProducto
+          key={abierto.id}
           producto={abierto}
           onCerrar={cerrarHoja}
           onAgregar={(item) => {
             agregar(item);
-            setAbierto(null);
+            cerrarHoja();
           }}
         />
       )}

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { pagos, tienda } from "../api";
 import { Campo, Radio, Stepper, claseInput } from "../componentes/Controles";
 import { CANCHAS, LINK_PEDIDOSYA } from "../config";
-import { CLAVES, local } from "../lib/almacen";
+import { CLAVES, local, sesion } from "../lib/almacen";
 import { llaveDelIntento, olvidarIntento } from "../lib/llave";
+import { recordarPedido } from "../lib/misPedidos";
 import { precio, textoOpciones } from "../lib/formato";
 import { useCarrito } from "./carrito";
 
@@ -64,14 +65,20 @@ function BotonFijo({ children, mp = false, ...props }) {
 function ItemCarrito({ item }) {
   const { cambiarCantidad, quitar, MAX_CANTIDAD } = useCarrito();
   const opciones = textoOpciones(item.opciones);
+  const tachado = item.problema ? "line-through text-tenue" : "";
   return (
     <div className="py-3 border-b border-gris grid gap-1.5">
       <div className="flex justify-between gap-3 num">
-        <b className="font-semibold">
+        <b className={`font-semibold ${tachado}`}>
           {item.cantidad}× {item.nombre}
         </b>
-        <span className="font-semibold">{precio(item.precio_unitario * item.cantidad)}</span>
+        <span className={`font-semibold ${tachado}`}>{precio(item.precio_unitario * item.cantidad)}</span>
       </div>
+      {item.problema && (
+        <p className="text-[13px] font-semibold text-naranja bg-naranja/10 rounded-lg px-2.5 py-1.5">
+          {item.problema}. Sacalo para poder seguir.
+        </p>
+      )}
       {opciones && <p className="text-tenue text-[13px] leading-snug">{opciones}</p>}
       {item.nota && <p className="text-naranja text-[13px] leading-snug">{item.nota}</p>}
       <div className="flex items-center justify-between mt-0.5">
@@ -109,30 +116,62 @@ function OpcionPago({ on, onElegir, logo, colorLogo, titulo, bajada }) {
   );
 }
 
+// Lo que va cargando en el checkout se guarda en la pestaña: si toca
+// "+ Agregar algo más" y vuelve, sigue todo como lo dejó
+function leerBorrador() {
+  return sesion.leer(CLAVES.borrador, {}) || {};
+}
+
 export default function Checkout({ paso, irA, donde, estadoTienda }) {
   const navigate = useNavigate();
-  const { items, total, vaciar } = useCarrito();
+  const { items, total, vaciar, repasar, conProblema } = useCarrito();
+  const [borrador] = useState(leerBorrador);
   const guardados = local.leer(CLAVES.datos, {}) || {};
 
-  const [modo, setModo] = useState("comer_adentro");
-  const [ubicacion, setUbicacion] = useState(donde || "");
-  const [nombre, setNombre] = useState(guardados.nombre || "");
-  const [apellido, setApellido] = useState(guardados.apellido || "");
-  const [telefono, setTelefono] = useState(guardados.telefono || "");
-  const [metodo, setMetodo] = useState("mercadopago");
+  const [modo, setModo] = useState(borrador.modo || "comer_adentro");
+  // Si vino del QR de una cancha, gana el QR
+  const [ubicacion, setUbicacion] = useState(donde || borrador.ubicacion || "");
+  const [nombre, setNombre] = useState(borrador.nombre ?? guardados.nombre ?? "");
+  const [apellido, setApellido] = useState(borrador.apellido ?? guardados.apellido ?? "");
+  const [telefono, setTelefono] = useState(borrador.telefono ?? guardados.telefono ?? "");
+  const [metodo, setMetodo] = useState(borrador.metodo || "mercadopago");
   const [errores, setErrores] = useState({});
   const [errorEnvio, setErrorEnvio] = useState(null);
   const [enviando, setEnviando] = useState(false);
+  const [preciosNuevos, setPreciosNuevos] = useState(0);
   const enviandoRef = useRef(false); // para que dos toques rápidos no manden dos pedidos
+
+  useEffect(() => {
+    sesion.guardar(CLAVES.borrador, { modo, ubicacion, nombre, apellido, telefono, metodo });
+  }, [modo, ubicacion, nombre, apellido, telefono, metodo]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [paso]);
 
+  // Al entrar al checkout traigo la carta de ahora: si Renzo cambió precios o
+  // se apagó algo mientras el pedido estaba en el carrito, se ve acá y no
+  // recién en Mercado Pago. El precio que vale igual lo calcula el backend
+  const repasarRef = useRef(repasar);
+  repasarRef.current = repasar;
+  const revisarCarta = useCallback(async () => {
+    try {
+      const cambiaron = repasarRef.current(await tienda.menu());
+      if (cambiaron) setPreciosNuevos(cambiaron);
+    } catch {
+      // sin internet: sigue con lo que tenía, el backend igual valida todo
+    }
+  }, []);
+  useEffect(() => {
+    revisarCarta();
+  }, [paso, revisarCarta]);
+
   const linkDelivery = estadoTienda?.link_delivery || LINK_PEDIDOSYA;
   const cerrada = estadoTienda && !estadoTienda.acepta_pedidos;
+  const textoCerrada = estadoTienda?.abierto && estadoTienda?.pausado ? "PEDIDOS EN PAUSA" : "CANTINA CERRADA";
 
   function continuar() {
+    if (cerrada || conProblema.length) return;
     const e = {};
     if (modo === "comer_adentro" && ubicacion.trim().length < 3) {
       e.ubicacion = "Decinos dónde estás así te lo llevamos";
@@ -174,6 +213,9 @@ export default function Checkout({ paso, irA, donde, estadoTienda }) {
         })),
       }, llaveDelIntento());
     } catch (err) {
+      // Si fue por algo de la carta (se apagó un producto, cambió algo), repaso
+      // el carrito así en "Tu pedido" se marca cuál es
+      if (err.status === 400) revisarCarta();
       // El backend ya manda el mensaje escrito para el cliente. Sin conexión no
       // sabemos si llegó: puede tocar de nuevo tranquilo, con la misma llave no se duplica
       setErrorEnvio(
@@ -190,7 +232,8 @@ export default function Checkout({ paso, irA, donde, estadoTienda }) {
     // La llave ya cumplió: el próximo pedido lleva otra
     olvidarIntento();
     local.guardar(CLAVES.datos, { nombre: nombre.trim(), apellido: apellido.trim(), telefono: telefono.trim() });
-    local.guardar(CLAVES.ultimoPedido, { codigo: pedido.codigo, numero: pedido.numero, creado: Date.now() });
+    recordarPedido(pedido.codigo);
+    sesion.guardar(CLAVES.borrador, null);
     vaciar();
 
     if (metodo === "efectivo") {
@@ -238,6 +281,12 @@ export default function Checkout({ paso, irA, donde, estadoTienda }) {
           <button type="button" onClick={() => irA(null)} className="self-start text-naranja text-sm font-semibold py-1">
             + Agregar algo más
           </button>
+
+          {preciosNuevos > 0 && (
+            <p className="p-3 rounded-xl bg-alerta/15 text-alerta text-sm">
+              Actualizamos {preciosNuevos === 1 ? "un precio" : "los precios"} de tu pedido con los de ahora.
+            </p>
+          )}
 
           <Pregunta>¿Dónde lo comés?</Pregunta>
           <div role="radiogroup" aria-label="Dónde lo comés" className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-carbon border border-linea">
@@ -323,9 +372,24 @@ export default function Checkout({ paso, irA, donde, estadoTienda }) {
           )}
 
           {modo !== "delivery" && <Total total={total} />}
+
+          {modo !== "delivery" && cerrada && (
+            <p role="alert" className="p-3 rounded-xl bg-alerta/15 text-alerta text-sm">
+              {estadoTienda.mensaje || "Ahora no estamos tomando pedidos"} Tu pedido queda guardado acá.
+            </p>
+          )}
+          {modo !== "delivery" && !cerrada && conProblema.length > 0 && (
+            <p role="alert" className="p-3 rounded-xl bg-naranja/15 text-naranja text-sm">
+              Hay {conProblema.length === 1 ? "algo" : "cosas"} en tu pedido que hoy no tenemos. Sacalo para seguir.
+            </p>
+          )}
         </div>
 
-        {modo !== "delivery" && <BotonFijo onClick={continuar}>CONTINUAR</BotonFijo>}
+        {modo !== "delivery" && (
+          <BotonFijo onClick={continuar} disabled={cerrada || conProblema.length > 0}>
+            {cerrada ? textoCerrada : "CONTINUAR"}
+          </BotonFijo>
+        )}
       </div>
     );
   }
@@ -387,14 +451,21 @@ export default function Checkout({ paso, irA, donde, estadoTienda }) {
           </p>
         )}
         {errorEnvio && (
-          <p role="alert" className="p-3 rounded-xl bg-naranja/15 text-naranja text-sm">
-            {errorEnvio}
-          </p>
+          <div role="alert" className="p-3 rounded-xl bg-naranja/15 text-naranja text-sm grid gap-2">
+            <p>{errorEnvio}</p>
+            {conProblema.length > 0 && (
+              <button type="button" onClick={() => irA("pedido")} className="justify-self-start font-semibold underline underline-offset-2">
+                Revisar mi pedido
+              </button>
+            )}
+          </div>
         )}
       </div>
 
-      <BotonFijo mp={metodo === "mercadopago"} onClick={confirmar} disabled={enviando}>
-        {enviando
+      <BotonFijo mp={metodo === "mercadopago" && !cerrada} onClick={confirmar} disabled={enviando || cerrada}>
+        {cerrada
+          ? textoCerrada
+          : enviando
           ? metodo === "mercadopago"
             ? "YENDO A MERCADO PAGO..."
             : "MANDANDO TU PEDIDO..."

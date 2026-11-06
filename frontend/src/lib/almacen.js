@@ -33,7 +33,9 @@ export const sesion = {
 export const CLAVES = {
   carrito: "bruto.carrito",
   datos: "bruto.datos",
-  ultimoPedido: "bruto.ultimo-pedido",
+  ultimoPedido: "bruto.ultimo-pedido", // versión vieja, ahora va misPedidos
+  misPedidos: "bruto.mis-pedidos",
+  borrador: "bruto.checkout", // lo que va cargando en el checkout (sessionStorage)
   intro: "bruto.intro",
   intento: "bruto.intento", // Idempotency-Key del checkout en curso
 };

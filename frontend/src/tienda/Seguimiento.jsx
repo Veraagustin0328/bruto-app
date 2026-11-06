@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { pagos, tienda, ws } from "../api";
 import Logo from "../componentes/Logo";
-import { CLAVES, local } from "../lib/almacen";
+import { misPedidos, recordarPedido } from "../lib/misPedidos";
 import { horaDe, numeroPedido, precio, textoOpciones } from "../lib/formato";
 import useSocket from "../lib/useSocket";
 
@@ -148,8 +148,7 @@ export default function Seguimiento() {
   useEffect(() => {
     cargar();
     // Así si cierra y vuelve a abrir la tienda, le aparece "Ver mi pedido"
-    const ultimo = local.leer(CLAVES.ultimoPedido);
-    if (ultimo?.codigo !== codigo) local.guardar(CLAVES.ultimoPedido, { codigo, creado: Date.now() });
+    if (!misPedidos().some((p) => p.codigo === codigo)) recordarPedido(codigo);
   }, [codigo, cargar]);
 
   const enPendientePago = pedido?.estado === "pendiente_pago";
@@ -229,6 +228,19 @@ export default function Seguimiento() {
     }
     estadoAnterior.current = pedido.estado;
   }, [pedido]);
+
+  // Si el celu no vibra (iPhone, o no tocó la pantalla), al menos la pestaña
+  // lo dice: "¡Listo! #042" se ve aunque esté mirando otra app y vuelva
+  useEffect(() => {
+    if (!pedido) return undefined;
+    const antes = document.title;
+    if (pedido.estado === "listo") {
+      document.title = `¡Listo! ${numeroPedido(pedido.numero)} · BRUTO`;
+    }
+    return () => {
+      document.title = antes;
+    };
+  }, [pedido?.estado, pedido?.numero]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function volverAPagar() {
     setPagando(true);

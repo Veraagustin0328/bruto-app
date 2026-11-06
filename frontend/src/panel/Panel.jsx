@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { panel } from "../api";
 import Logo from "../componentes/Logo";
-import { haceCuanto, minutosDesde, numeroPedido, precio, telefono, textoOpciones } from "../lib/formato";
+import { haceCuanto, horaDe, minutosDesde, numeroPedido, precio, telefono, textoOpciones } from "../lib/formato";
 import useSonido from "../lib/sonido";
 import { NOMBRE_ROL, useSalir } from "./sesion";
 import usePedidosEnVivo, { useAhora } from "./usePedidosEnVivo";
@@ -209,22 +209,101 @@ function TarjetaPedido({ p, nuevo, ahora, onActualizado, avisar }) {
 
 // ---------- la pantalla ----------
 
-function Resumen({ datos }) {
+function Resumen({ datos, fallo }) {
   const cuadros = [
-    { titulo: "Pedidos hoy", valor: datos ? datos.pedidos : "–" },
-    { titulo: "Vendido hoy", valor: datos ? precio(datos.vendido) : "–" },
-    { titulo: "Efectivo a cobrar", valor: datos ? precio(datos.efectivo_a_cobrar) : "–", alerta: true },
-    { titulo: "Esperando pago de MP", valor: datos ? datos.esperando_pago_mp : "–" },
+    { titulo: "Pedidos hoy", valor: datos?.pedidos },
+    { titulo: "Vendido hoy", valor: datos && precio(datos.vendido) },
+    { titulo: "Efectivo a cobrar", valor: datos && precio(datos.efectivo_a_cobrar), alerta: true },
+    { titulo: "Esperando pago de MP", valor: datos?.esperando_pago_mp },
   ];
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 px-4 md:px-6 pt-4">
-      {cuadros.map((c) => (
-        <div key={c.titulo} className="bg-negro border border-gris rounded-xl px-3.5 py-2.5">
-          <small className="text-tenue text-[11.5px] block">{c.titulo}</small>
-          <b className={`text-[20px] md:text-[22px] font-bold num ${c.alerta && datos?.efectivo_a_cobrar > 0 ? "text-alerta" : ""}`}>{c.valor}</b>
-        </div>
-      ))}
+    <div className="px-4 md:px-6 pt-4 grid gap-1.5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3">
+        {cuadros.map((c) => (
+          <div key={c.titulo} className="bg-negro border border-gris rounded-xl px-3.5 py-2.5">
+            <small className="text-tenue text-[11.5px] block">{c.titulo}</small>
+            {datos ? (
+              <b className={`text-[20px] md:text-[22px] font-bold num ${c.alerta && datos.efectivo_a_cobrar > 0 ? "text-alerta" : ""}`}>{c.valor}</b>
+            ) : (
+              <span className="block h-[30px] md:h-[33px] w-16 rounded bg-gris animate-pulse" aria-label="Cargando" />
+            )}
+          </div>
+        ))}
+      </div>
+      {fallo && (
+        <p className="text-alerta text-xs">
+          {datos ? "No pudimos actualizar estos números, puede que estén atrasados." : "No pudimos traer los números del día."} Probamos de nuevo en un minuto.
+        </p>
+      )}
     </div>
+  );
+}
+
+// Lo que ya salió hoy: entregados y cancelados (?todos=true)
+function Terminados({ firma }) {
+  const [abierto, setAbierto] = useState(false);
+  const [lista, setLista] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!abierto) return undefined;
+    let vivo = true;
+    panel
+      .pedidos({ todos: true })
+      .then((todos) => {
+        if (!vivo) return;
+        setLista(todos.filter((p) => p.estado === "entregado" || p.estado === "cancelado").reverse());
+        setError(null);
+      })
+      .catch((e) => vivo && setError(e.message));
+    return () => {
+      vivo = false;
+    };
+  }, [abierto, firma]);
+
+  return (
+    <section className="px-4 md:px-6 pb-24">
+      <button
+        type="button"
+        onClick={() => setAbierto((a) => !a)}
+        aria-expanded={abierto}
+        className="w-full md:w-auto px-4 py-2.5 rounded-xl bg-negro border border-gris text-sm font-semibold text-tenue hover:text-texto"
+      >
+        {abierto ? "▾" : "▸"} Entregados y cancelados de hoy
+        {abierto && lista && <span className="num"> · {lista.length}</span>}
+      </button>
+      {abierto && (
+        <div className="mt-2.5 bg-negro border border-gris rounded-2xl overflow-hidden">
+          {error ? (
+            <p className="p-4 text-naranja text-sm">No pudimos traerlos: {error}</p>
+          ) : !lista ? (
+            <div className="h-24 animate-pulse bg-gris/40" />
+          ) : lista.length === 0 ? (
+            <p className="p-4 text-tenue text-sm">Todavía no se entregó ninguno.</p>
+          ) : (
+            <ul className="divide-y divide-gris">
+              {lista.map((p) => (
+                <li key={p.id} className="px-4 py-2.5 grid grid-cols-[auto_1fr_auto] gap-x-3 items-center text-[13.5px]">
+                  <b className="font-display font-normal text-[22px] num">{numeroPedido(p.numero)}</b>
+                  <span className="min-w-0">
+                    <span className="block truncate">
+                      {p.nombre} {p.apellido} · {p.modo === "comer_adentro" ? p.ubicacion : "Take away"}
+                    </span>
+                    <small className="text-tenue block truncate">{p.items.map((it) => `${it.cantidad}× ${it.nombre_producto}`).join(", ")}</small>
+                  </span>
+                  <span className="text-right">
+                    <span className="block num font-semibold">{precio(p.total)}</span>
+                    <small className={p.estado === "cancelado" ? "text-naranja" : "text-ok"}>
+                      {p.estado === "cancelado" ? "Cancelado" : "Entregado"} · {horaDe(p.updated_at)}
+                    </small>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -304,10 +383,17 @@ export default function Panel({ sesion }) {
   const ahora = useAhora(30000);
   const { avisos, avisar } = useAvisos();
   const [resumen, setResumen] = useState(null);
+  const [falloResumen, setFalloResumen] = useState(false);
   const [pestania, setPestania] = useState("recibido");
 
   const cargarResumen = useCallback(() => {
-    panel.resumen().then(setResumen).catch(() => {});
+    panel
+      .resumen()
+      .then((r) => {
+        setResumen(r);
+        setFalloResumen(false);
+      })
+      .catch(() => setFalloResumen(true));
   }, []);
 
   const { lista, cargando, recargando, error, conectado, recargar, actualizar, destacados } = usePedidosEnVivo(sesion.token, ACTIVOS, {
@@ -351,7 +437,7 @@ export default function Panel({ sesion }) {
         </div>
       </header>
 
-      <Resumen datos={resumen} />
+      <Resumen datos={resumen} fallo={falloResumen} />
 
       {/* En el celu las columnas pasan a pestañas */}
       <div className="md:hidden flex gap-1 px-4 pt-4" role="tablist">
@@ -372,7 +458,7 @@ export default function Panel({ sesion }) {
         })}
       </div>
 
-      <main className="grid md:grid-cols-3 gap-4 px-4 md:px-6 pt-4 pb-24 items-start">
+      <main className="grid md:grid-cols-3 gap-4 px-4 md:px-6 pt-4 pb-6 items-start">
         {COLUMNAS.map((c) => {
           const pedidos = lista.filter((p) => p.estado === c.estado);
           return (
@@ -394,6 +480,8 @@ export default function Panel({ sesion }) {
           );
         })}
       </main>
+
+      <Terminados firma={firma} />
 
       <Avisos avisos={avisos} />
     </div>

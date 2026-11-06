@@ -173,3 +173,12 @@
 .intro.quieta .logo .bajada {
   letter-spacing: 0.45em;
 }
+
+/* En compu (pantalla acostada) la escena de celu queda en el medio: las líneas
+   de la cancha se esfuman a los costados en vez de cortar de golpe */
+@media (min-aspect-ratio: 1/1) {
+  .intro .cancha {
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+  }
+}
