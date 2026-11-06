@@ -1,10 +1,14 @@
-﻿from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+﻿from datetime import date
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import requiere_rol
 from app.models import EstadoPedido, Pedido, Rol, Usuario
+from app.schemas.caja import CajaDia, CajaHistorial
 from app.schemas.panel import CambioEstado, PedidoConAviso, PedidoPanelOut, ResumenDia
+from app.services import caja as caja_srv
 from app.services import panel as srv
 from app.services.pedidos import PedidoInvalido
 from app.ws import avisar_impresora, avisar_pedido
@@ -14,6 +18,7 @@ router = APIRouter(prefix="/api/panel", tags=["Panel de la cantina"])
 # Quién entra a qué. El admin pasa siempre (lo resuelve requiere_rol)
 cantina = requiere_rol(Rol.cantina)
 cantina_o_cocina = requiere_rol(Rol.cantina, Rol.cocina)
+solo_admin = requiere_rol(Rol.admin)
 
 
 def traer_pedido(pedido_id: int, db: Session = Depends(get_db)) -> Pedido:
@@ -49,6 +54,34 @@ def listar_pedidos(
 @router.get("/resumen", response_model=ResumenDia)
 def resumen_del_dia(db: Session = Depends(get_db), _: Usuario = Depends(cantina)):
     return srv.resumen(db)
+
+
+@router.get("/caja", response_model=CajaDia)
+def caja_del_dia(
+    fecha: date | None = Query(default=None, description="AAAA-MM-DD, el día en que arrancó la jornada. Sin fecha, la de hoy"),
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(cantina),
+):
+    # La jornada va de 6 AM a 6 AM. La cantina solo ve la de hoy; el admin, cualquiera
+    hoy = caja_srv.hoy()
+    fecha = fecha or hoy
+    if usuario.rol != Rol.admin and fecha != hoy:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="La cantina solo puede ver la caja de hoy")
+    return caja_srv.caja_del_dia(db, fecha)
+
+
+@router.get("/caja/historial", response_model=CajaHistorial)
+def historial_de_caja(
+    desde: date | None = Query(default=None, description="AAAA-MM-DD. Sin nada, 30 días antes de hasta"),
+    hasta: date | None = Query(default=None, description="AAAA-MM-DD. Sin nada, hoy"),
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(solo_admin),
+):
+    # Total por día, para ver cómo viene el mes (solo Renzo)
+    try:
+        return caja_srv.historial(db, desde, hasta)
+    except caja_srv.RangoInvalido as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.get("/pedidos/{pedido_id}", response_model=PedidoPanelOut)
