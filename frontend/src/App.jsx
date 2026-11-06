@@ -7,6 +7,7 @@ import Panel from "./panel/Panel";
 import Cocina from "./panel/Cocina";
 import Marco from "./panel/Marco";
 import CartaPrecios from "./panel/carta/CartaPrecios";
+import Configuracion from "./panel/Configuracion";
 import { Titulo } from "./panel/comunes";
 import { RutaProtegida } from "./panel/sesion";
 
@@ -59,7 +60,7 @@ export default function App() {
       <Route path="/panel/caja" element={<Protegida ruta="/panel/caja">{(s) => <Pronto sesion={s} titulo="Caja del día" />}</Protegida>} />
       <Route
         path="/panel/config"
-        element={<Protegida ruta="/panel/config">{(s) => <Pronto sesion={s} titulo="Configuración" />}</Protegida>}
+        element={<Protegida ruta="/panel/config">{(s) => <Configuracion sesion={s} />}</Protegida>}
       />
       <Route
         path="/panel/usuarios"

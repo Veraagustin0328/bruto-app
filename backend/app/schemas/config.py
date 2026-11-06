@@ -72,3 +72,15 @@ class EstadoTienda(BaseModel):
     mensaje: str | None  # para mostrar si no acepta pedidos
     link_delivery: str | None  # PedidosYa, vacío hasta que Renzo lo pase
     horario_hoy: HorarioOut | None
+
+
+class PausaIn(BaseModel):
+    pausado: bool
+
+
+class PausaOut(BaseModel):
+    # Lo que ve la cantina en el interruptor de "Pausar pedidos"
+    model_config = ConfigDict(from_attributes=True)
+
+    pedidos_pausados: bool
+    mensaje_pausado: str  # lo que ve el cliente mientras está pausado

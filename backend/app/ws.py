@@ -171,3 +171,8 @@ async def avisar_impresora(pedido_id: int):
 async def avisar_carta():
     # Cambió algo de la carta (precio, stock, producto nuevo): la cantina la recarga
     await salas.mandar("panel", {"evento": "carta_actualizada"})
+
+
+async def avisar_config():
+    # Pausaron los pedidos, cambió el horario o el link: los paneles abiertos se actualizan
+    await salas.mandar("panel", {"evento": "config_actualizada"})

@@ -4,6 +4,7 @@ import { haceCuanto, horaDe, minutosDesde, numeroPedido, precio, telefono, texto
 import useSonido from "../lib/sonido";
 import { AvisoConexion, AvisoSonido, Avisos, Boton, EnVivo, useAvisos } from "./comunes";
 import Marco from "./Marco";
+import Pausa from "./Pausa";
 import usePedidosEnVivo, { useAhora } from "./usePedidosEnVivo";
 
 // Panel de la cantina (parte 2 de la maqueta)
@@ -281,8 +282,10 @@ export default function Panel({ sesion }) {
       .catch(() => setFalloResumen(true));
   }, []);
 
+  const [versionConfig, setVersionConfig] = useState(0);
   const { lista, cargando, recargando, error, conectado, recargar, actualizar, destacados } = usePedidosEnVivo(sesion.token, ACTIVOS, {
     onNuevo: sonar,
+    onEvento: (m) => m.evento === "config_actualizada" && setVersionConfig((v) => v + 1),
   });
 
   // El resumen se recalcula cada vez que cambia algo (y cada minuto por las dudas)
@@ -302,6 +305,9 @@ export default function Panel({ sesion }) {
       <AvisoSonido habilitado={habilitado} />
 
       <Resumen datos={resumen} fallo={falloResumen} />
+      <div className="px-4 md:px-6 pt-2.5">
+        <Pausa version={versionConfig} avisar={avisar} />
+      </div>
 
       {/* En el celu las columnas pasan a pestañas */}
       <div className="md:hidden flex gap-1 px-4 pt-4" role="tablist">

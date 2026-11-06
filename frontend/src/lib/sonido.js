@@ -16,7 +16,10 @@ export default function useSonido() {
           ctx.current = new Ctx();
         }
         ctx.current.resume?.();
-        setHabilitado(true);
+        // La barra de "activar el sonido" se va recién cuando termina el toque:
+        // si se fuera en el pointerdown, todo se corre para arriba antes del
+        // click y el primer botón que tocan no anda
+        setTimeout(() => setHabilitado(true), 350);
       } catch {
         // sin audio: seguimos sin sonido
       }

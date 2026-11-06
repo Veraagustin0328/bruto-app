@@ -7,11 +7,12 @@ import useSocket from "../lib/useSocket";
 //
 // estados: los que se muestran (el resto se saca de la lista)
 // onNuevo: se llama cuando entra un pedido nuevo (para el sonido)
+// onEvento: los otros avisos del WebSocket (ej. config_actualizada)
 
 const BRILLA_MS = 8000; // cuánto brilla la tarjeta de un pedido recién entrado
 const RECARGA_MS = 2 * 60 * 1000; // por las dudas, cada tanto traigo todo de nuevo
 
-export default function usePedidosEnVivo(token, estados, { onNuevo } = {}) {
+export default function usePedidosEnVivo(token, estados, { onNuevo, onEvento } = {}) {
   const [porId, setPorId] = useState(() => new Map());
   const [cargando, setCargando] = useState(true);
   const [recargando, setRecargando] = useState(false);
@@ -21,6 +22,8 @@ export default function usePedidosEnVivo(token, estados, { onNuevo } = {}) {
   estadosRef.current = estados;
   const onNuevoRef = useRef(onNuevo);
   onNuevoRef.current = onNuevo;
+  const onEventoRef = useRef(onEvento);
+  onEventoRef.current = onEvento;
   // Todos los pedidos que esta pantalla ya vio alguna vez. Sirve para darse
   // cuenta de los que entraron mientras el WebSocket estaba cortado
   const vistos = useRef(new Set());
@@ -79,7 +82,10 @@ export default function usePedidosEnVivo(token, estados, { onNuevo } = {}) {
 
   const conectado = useSocket(token ? ws.panel(token) : null, {
     onMensaje: (m) => {
-      if (!m.pedido) return; // ej: carta_actualizada, acá no lo usamos
+      if (!m.pedido) {
+        onEventoRef.current?.(m); // ej: config_actualizada
+        return;
+      }
       if (m.evento === "pedido_nuevo" && estadosRef.current.includes(m.pedido.estado) && !vistos.current.has(m.pedido.id)) {
         destacar(m.pedido.id);
         onNuevoRef.current?.(m.pedido);
