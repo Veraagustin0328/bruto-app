@@ -118,7 +118,7 @@ export default function Cocina({ sesion }) {
   const { sonar, habilitado } = useSonido();
   const ahora = useAhora(1000);
   const prendida = usePantallaPrendida();
-  const { lista, cargando, error, conectado, recargar, actualizar, destacados } = usePedidosEnVivo(sesion.token, EN_COCINA, {
+  const { lista, cargando, recargando, error, conectado, recargar, actualizar, destacados } = usePedidosEnVivo(sesion.token, EN_COCINA, {
     onNuevo: sonar,
   });
 
@@ -126,7 +126,7 @@ export default function Cocina({ sesion }) {
 
   return (
     <div className="min-h-dvh bg-negro">
-      <AvisoConexion conectado={conectado} error={error} onReintentar={recargar} />
+      <AvisoConexion conectado={conectado} error={error} onReintentar={recargar} recargando={recargando} />
       <AvisoSonido habilitado={habilitado} />
 
       <header className="flex justify-between items-center gap-4 px-5 md:px-6 py-3.5 border-b border-gris">

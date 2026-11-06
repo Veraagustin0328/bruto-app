@@ -242,17 +242,48 @@ export function EnVivo({ conectado }) {
   );
 }
 
-export function AvisoConexion({ conectado, error, onReintentar }) {
-  if (conectado && !error) return null;
+// El cartel de arriba cuando se corta el WebSocket. Espera un segundo y medio
+// antes de salir, así no parpadea al abrir la pantalla mientras conecta
+export function AvisoConexion({ conectado, error, onReintentar, recargando = false }) {
+  const [mostrar, setMostrar] = useState(false);
+  useEffect(() => {
+    if (conectado) {
+      setMostrar(false);
+      return undefined;
+    }
+    const t = setTimeout(() => setMostrar(true), 1500);
+    return () => clearTimeout(t);
+  }, [conectado]);
+
+  const cortado = !conectado && mostrar;
+  if (!cortado && !error) return null;
   return (
-    <div role="alert" className="bg-alerta text-[#2a1d02] text-sm font-semibold px-4 py-2 flex items-center justify-between gap-3">
-      <span>
-        {!conectado
-          ? "Se cortó la conexión en vivo. Estamos reconectando: los pedidos nuevos pueden tardar en aparecer."
-          : `No pudimos traer los pedidos: ${error}`}
+    <div
+      role="alert"
+      className={`sticky top-0 z-40 px-4 py-3 flex items-center justify-between gap-3 font-semibold shadow-lg ${
+        cortado ? "bg-alerta text-[#2a1d02]" : "bg-naranja text-white"
+      }`}
+    >
+      <span className="flex items-center gap-2.5">
+        {cortado && <span className="w-3 h-3 flex-none rounded-full bg-[#2a1d02] animate-pulse" />}
+        <span>
+          {cortado ? (
+            <>
+              <b className="block text-base md:text-lg leading-tight">Sin conexión, reconectando...</b>
+              <small className="text-[12.5px] font-medium">Los pedidos nuevos pueden tardar en aparecer. Cuando vuelva, suenan los que entraron.</small>
+            </>
+          ) : (
+            `No pudimos traer los pedidos: ${error}`
+          )}
+        </span>
       </span>
-      <button type="button" onClick={onReintentar} className="underline whitespace-nowrap">
-        Recargar
+      <button
+        type="button"
+        onClick={onReintentar}
+        disabled={recargando}
+        className="underline whitespace-nowrap text-sm disabled:no-underline disabled:opacity-70"
+      >
+        {recargando ? "Recargando..." : "Recargar"}
       </button>
     </div>
   );
@@ -279,7 +310,7 @@ export default function Panel({ sesion }) {
     panel.resumen().then(setResumen).catch(() => {});
   }, []);
 
-  const { lista, cargando, error, conectado, recargar, actualizar, destacados } = usePedidosEnVivo(sesion.token, ACTIVOS, {
+  const { lista, cargando, recargando, error, conectado, recargar, actualizar, destacados } = usePedidosEnVivo(sesion.token, ACTIVOS, {
     onNuevo: sonar,
   });
 
@@ -298,7 +329,7 @@ export default function Panel({ sesion }) {
 
   return (
     <div className="min-h-dvh bg-carbon">
-      <AvisoConexion conectado={conectado} error={error} onReintentar={recargar} />
+      <AvisoConexion conectado={conectado} error={error} onReintentar={recargar} recargando={recargando} />
       <AvisoSonido habilitado={habilitado} />
 
       <header className="flex items-center gap-4 md:gap-7 px-4 md:px-6 py-3 border-b border-gris bg-negro">

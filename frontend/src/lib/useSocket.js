@@ -7,11 +7,14 @@ import { useEffect, useRef, useState } from "react";
 //
 // url: null para no conectar. onMensaje recibe el JSON ya parseado.
 // onReconecta se llama cada vez que vuelve a conectar después de un corte,
-// para traer de nuevo lo que se pudo haber perdido mientras tanto
-export default function useSocket(url, { onMensaje, onRechazo, onReconecta } = {}) {
+// para traer de nuevo lo que se pudo haber perdido mientras tanto.
+// onFallo se llama cuando un intento se cae sin llegar a conectar. Ojo: si el
+// backend rechaza el token antes de aceptar, el navegador ve un corte común
+// (1006, no 1008), así que el panel usa esto para chequear si venció la sesión
+export default function useSocket(url, { onMensaje, onRechazo, onReconecta, onFallo } = {}) {
   const [conectado, setConectado] = useState(false);
-  const callbacks = useRef({ onMensaje, onRechazo, onReconecta });
-  callbacks.current = { onMensaje, onRechazo, onReconecta };
+  const callbacks = useRef({ onMensaje, onRechazo, onReconecta, onFallo });
+  callbacks.current = { onMensaje, onRechazo, onReconecta, onFallo };
 
   useEffect(() => {
     if (!url) return undefined;
@@ -25,8 +28,10 @@ export default function useSocket(url, { onMensaje, onRechazo, onReconecta } = {
 
     function conectar() {
       socket = new WebSocket(url);
+      let abrio = false;
 
       socket.onopen = () => {
+        abrio = true;
         setConectado(true);
         espera = 1000;
         if (cortado) callbacks.current.onReconecta?.();
@@ -53,6 +58,7 @@ export default function useSocket(url, { onMensaje, onRechazo, onReconecta } = {
           return;
         }
         cortado = true;
+        if (!abrio) callbacks.current.onFallo?.();
         reintento = setTimeout(conectar, espera);
         espera = Math.min(espera * 2, 15000);
       };
