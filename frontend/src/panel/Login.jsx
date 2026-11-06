@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { auth, guardarSesion } from "../api";
 import { Campo, claseInput } from "../componentes/Controles";
 import Logo from "../componentes/Logo";
+import { inicioDe } from "./sesion";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -35,9 +36,7 @@ export default function Login() {
       const destino =
         volver && volver.startsWith("/") && !volver.startsWith("//")
           ? volver
-          : usuario.rol === "cocina"
-            ? "/cocina"
-            : "/panel";
+          : inicioDe(usuario.rol);
       navigate(destino, { replace: true });
     } catch (err) {
       setError(err.message);

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { panel } from "../api";
 import { fecha, numeroPedido, reloj, textoOpciones } from "../lib/formato";
 import useSonido from "../lib/sonido";
-import { AvisoConexion, AvisoSonido, EnVivo } from "./Panel";
+import { AvisoConexion, AvisoSonido, EnVivo } from "./comunes";
+import Marco from "./Marco";
 import { useSalir } from "./sesion";
 import usePedidosEnVivo, { useAhora } from "./usePedidosEnVivo";
 
@@ -161,7 +161,10 @@ export default function Cocina({ sesion }) {
 
   const horaActual = new Date(ahora).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
 
-  return (
+  // La cocina (tablet) no tiene pestañas: solo su pantalla. Admin y cantina la ven
+  // dentro del marco del panel, con las pestañas arriba
+  const soloCocina = sesion.usuario.rol === "cocina";
+  const pantalla = (
     <div className="min-h-dvh bg-negro">
       <AvisoConexion conectado={conectado} error={error} onReintentar={recargar} recargando={recargando} />
       <AvisoSonido habilitado={habilitado} />
@@ -174,14 +177,11 @@ export default function Cocina({ sesion }) {
           <span className="font-semibold text-texto text-lg num">{horaActual}</span>
           <EnVivo conectado={conectado} />
           {!prendida && "wakeLock" in navigator && <span className="hidden md:inline text-alerta text-xs">La pantalla se puede apagar</span>}
-          {sesion.usuario.rol !== "cocina" && (
-            <Link to="/panel" className="hover:text-texto">
-              Panel
-            </Link>
+          {soloCocina && (
+            <button type="button" onClick={salir} className="hover:text-texto">
+              Salir
+            </button>
           )}
-          <button type="button" onClick={salir} className="hover:text-texto">
-            Salir
-          </button>
         </div>
       </header>
 
@@ -220,5 +220,12 @@ export default function Cocina({ sesion }) {
         />
       )}
     </div>
+  );
+
+  if (soloCocina) return pantalla;
+  return (
+    <Marco sesion={sesion} fondo="bg-negro">
+      {pantalla}
+    </Marco>
   );
 }

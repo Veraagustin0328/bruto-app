@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { panel } from "../api";
-import Logo from "../componentes/Logo";
 import { haceCuanto, horaDe, minutosDesde, numeroPedido, precio, telefono, textoOpciones } from "../lib/formato";
 import useSonido from "../lib/sonido";
-import { NOMBRE_ROL, useSalir } from "./sesion";
+import { AvisoConexion, AvisoSonido, Avisos, Boton, EnVivo, useAvisos } from "./comunes";
+import Marco from "./Marco";
 import usePedidosEnVivo, { useAhora } from "./usePedidosEnVivo";
 
 // Panel de la cantina (parte 2 de la maqueta)
@@ -17,35 +16,6 @@ const COLUMNAS = [
 ];
 const TARDE_MIN = 15; // a partir de acá el "hace X min" se pone amarillo
 
-// ---------- avisitos de abajo (ej: "Acordate de devolver el pago") ----------
-
-function useAvisos() {
-  const [avisos, setAvisos] = useState([]);
-  const avisar = useCallback((texto, tipo = "ok") => {
-    const id = Math.random();
-    setAvisos((a) => [...a, { id, texto, tipo }]);
-    setTimeout(() => setAvisos((a) => a.filter((x) => x.id !== id)), tipo === "alerta" ? 9000 : 4000);
-  }, []);
-  return { avisos, avisar };
-}
-
-function Avisos({ avisos }) {
-  return (
-    <div className="fixed bottom-4 inset-x-0 z-50 flex flex-col items-center gap-2 px-4 pointer-events-none" aria-live="polite">
-      {avisos.map((a) => (
-        <div
-          key={a.id}
-          className={`max-w-md w-full rounded-xl px-4 py-3 text-sm font-semibold shadow-lg ${
-            a.tipo === "alerta" ? "bg-alerta text-[#2a1d02]" : a.tipo === "error" ? "bg-naranja text-white" : "bg-gris text-texto"
-          }`}
-        >
-          {a.texto}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // ---------- tarjeta de un pedido ----------
 
 function Cobro({ p }) {
@@ -56,20 +26,6 @@ function Cobro({ p }) {
     return <span className="text-[12px] font-semibold px-2 py-1 rounded-md bg-ok/15 text-ok num">Efectivo cobrado · {precio(p.total)}</span>;
   }
   return <span className="text-[12px] font-semibold px-2 py-1 rounded-md bg-alerta/15 text-alerta num">Cobrar · {precio(p.total)}</span>;
-}
-
-function Boton({ children, secundario = false, peligro = false, ...props }) {
-  return (
-    <button
-      type="button"
-      {...props}
-      className={`text-[13px] font-semibold px-3 py-2 rounded-lg whitespace-nowrap disabled:opacity-50 ${
-        peligro ? "bg-naranja/15 text-naranja" : secundario ? "bg-gris text-texto" : "bg-naranja text-white"
-      }`}
-    >
-      {children}
-    </button>
-  );
 }
 
 function TarjetaPedido({ p, nuevo, ahora, onActualizado, avisar }) {
@@ -307,78 +263,7 @@ function Terminados({ firma }) {
   );
 }
 
-export function EnVivo({ conectado }) {
-  return conectado ? (
-    <span className="inline-flex items-center gap-1.5 text-ok font-semibold text-xs whitespace-nowrap">
-      <span className="w-2 h-2 rounded-full bg-ok shadow-[0_0_0_3px_rgba(61,190,122,0.2)]" />
-      En vivo
-    </span>
-  ) : (
-    <span className="inline-flex items-center gap-1.5 text-alerta font-semibold text-xs whitespace-nowrap">
-      <span className="w-2 h-2 rounded-full bg-alerta animate-pulse" />
-      Reconectando
-    </span>
-  );
-}
-
-// El cartel de arriba cuando se corta el WebSocket. Espera un segundo y medio
-// antes de salir, así no parpadea al abrir la pantalla mientras conecta
-export function AvisoConexion({ conectado, error, onReintentar, recargando = false }) {
-  const [mostrar, setMostrar] = useState(false);
-  useEffect(() => {
-    if (conectado) {
-      setMostrar(false);
-      return undefined;
-    }
-    const t = setTimeout(() => setMostrar(true), 1500);
-    return () => clearTimeout(t);
-  }, [conectado]);
-
-  const cortado = !conectado && mostrar;
-  if (!cortado && !error) return null;
-  return (
-    <div
-      role="alert"
-      className={`sticky top-0 z-40 px-4 py-3 flex items-center justify-between gap-3 font-semibold shadow-lg ${
-        cortado ? "bg-alerta text-[#2a1d02]" : "bg-naranja text-white"
-      }`}
-    >
-      <span className="flex items-center gap-2.5">
-        {cortado && <span className="w-3 h-3 flex-none rounded-full bg-[#2a1d02] animate-pulse" />}
-        <span>
-          {cortado ? (
-            <>
-              <b className="block text-base md:text-lg leading-tight">Sin conexión, reconectando...</b>
-              <small className="text-[12.5px] font-medium">Los pedidos nuevos pueden tardar en aparecer. Cuando vuelva, suenan los que entraron.</small>
-            </>
-          ) : (
-            `No pudimos traer los pedidos: ${error}`
-          )}
-        </span>
-      </span>
-      <button
-        type="button"
-        onClick={onReintentar}
-        disabled={recargando}
-        className="underline whitespace-nowrap text-sm disabled:no-underline disabled:opacity-70"
-      >
-        {recargando ? "Recargando..." : "Recargar"}
-      </button>
-    </div>
-  );
-}
-
-export function AvisoSonido({ habilitado }) {
-  if (habilitado) return null;
-  return (
-    <button type="button" className="w-full bg-naranja text-white text-sm font-semibold px-4 py-2">
-      🔔 Tocá acá para activar el sonido de pedidos nuevos
-    </button>
-  );
-}
-
 export default function Panel({ sesion }) {
-  const salir = useSalir();
   const { sonar, habilitado } = useSonido();
   const ahora = useAhora(30000);
   const { avisos, avisar } = useAvisos();
@@ -411,31 +296,10 @@ export default function Panel({ sesion }) {
     return () => clearInterval(t);
   }, [cargarResumen]);
 
-  const usuario = sesion.usuario;
-
   return (
-    <div className="min-h-dvh bg-carbon">
+    <Marco sesion={sesion} derecha={<EnVivo conectado={conectado} />}>
       <AvisoConexion conectado={conectado} error={error} onReintentar={recargar} recargando={recargando} />
       <AvisoSonido habilitado={habilitado} />
-
-      <header className="flex items-center gap-4 md:gap-7 px-4 md:px-6 py-3 border-b border-gris bg-negro">
-        <Logo chico />
-        <nav className="flex gap-1 flex-1">
-          <span className="px-3 py-1.5 rounded-lg bg-gris text-sm font-medium">Pedidos</span>
-          <Link to="/cocina" className="px-3 py-1.5 rounded-lg text-tenue text-sm font-medium hover:text-texto">
-            Cocina
-          </Link>
-        </nav>
-        <div className="flex items-center gap-3 text-[12.5px] text-tenue">
-          <EnVivo conectado={conectado} />
-          <span className="hidden sm:inline">
-            {NOMBRE_ROL[usuario.rol]} · {usuario.nombre}
-          </span>
-          <button type="button" onClick={salir} className="text-tenue hover:text-texto underline-offset-2 hover:underline">
-            Salir
-          </button>
-        </div>
-      </header>
 
       <Resumen datos={resumen} fallo={falloResumen} />
 
@@ -484,6 +348,6 @@ export default function Panel({ sesion }) {
       <Terminados firma={firma} />
 
       <Avisos avisos={avisos} />
-    </div>
+    </Marco>
   );
 }
