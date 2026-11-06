@@ -14,12 +14,19 @@ export default function Marco({ sesion, derecha, children, fondo = "bg-carbon" }
 
   // En el celu la fila de pestañas se desliza: que la de esta pantalla quede a la vista
   useEffect(() => {
-    const activa = fila.current?.querySelector('[aria-current="page"]');
-    activa?.scrollIntoView({ block: "nearest", inline: "center" });
+    // Muevo solo la fila (scrollIntoView movía también la página para abajo)
+    const centrar = () => {
+      const nav = fila.current?.querySelector("nav");
+      const activa = nav?.querySelector('[aria-current="page"]');
+      if (nav && activa) nav.scrollLeft = activa.offsetLeft - nav.offsetLeft - (nav.clientWidth - activa.offsetWidth) / 2;
+    };
+    centrar();
+    // Con la letra de Google cargada las pestañas son más anchas: centro de nuevo
+    document.fonts?.ready.then(centrar);
   }, [pathname]);
 
   const pestanias = pantallas.length > 1 && (
-    <nav aria-label="Secciones del panel" className="flex gap-1 overflow-x-auto sin-scrollbar">
+    <nav aria-label="Secciones del panel" className="flex gap-1 overflow-x-auto sin-scrollbar lg:pr-0 pr-3">
       {pantallas.map((p) => (
         <NavLink
           key={p.ruta}
