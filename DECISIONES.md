@@ -338,3 +338,131 @@ No arreglé ninguno, como pide la tarea.
 17. Textos: "Take away" y "Delivery" quedaron en inglés porque así están en la maqueta y en la carta. Todo lo demás está en castellano.
 
 Nota de las pruebas: las migraciones usan `now()` de Postgres, así que una base SQLite armada con `alembic upgrade` no deja crear pedidos. No afecta a Postgres ni a los tests (usan `create_all`). Para probar el front con SQLite armé la base con `create_all`.
+
+---
+
+# Tarea 3 (arreglos, pantallas de admin y caja del día)
+
+Todo en la rama `admin`, creada desde `frontend`. Main no se tocó, no hubo push ni deploy, no se tocó el `.env` ni la base de Docker. Las pruebas en el navegador fueron contra el backend de verdad (uvicorn en el 8001) con una SQLite aparte en una carpeta temporal y un Mercado Pago de mentira, en Chrome a 390 px y 1280 px.
+
+## Qué quedó hecho
+
+| Paso | Estado | Commit |
+|---|---|---|
+| A1. Pedido duplicado con mala señal | Hecho (backend con migración + front) | `6d380c9` |
+| A2. Pagar dos veces en Mercado Pago | Hecho (backend + front) | `06c5ea3` |
+| A3. Pedidos que entran durante un corte del panel | Hecho | `0df7322` |
+| A4. Resto de la revisión | Hecho, salvo lo que se explica abajo | `a01d653` |
+| B1. Menú del panel según el rol | Hecho | `559a5e3` |
+| B2. Carta y precios | Hecho | `fe6ca29` |
+| B3. Configuración y pausa | Hecho (backend: pausa para la cantina) | `39fa356` |
+| B4. Usuarios | Hecho | `44fa91d` |
+| C1. Caja del día (backend) | Hecho | `47077c5` |
+| C2. Caja del día (pantalla) | Hecho | `399ec87` |
+
+No quedó ningún paso trabado.
+
+## Tests
+
+**307 tests, pasan todos** (eran 256; 48 nuevos en `tests/test_t3_*.py` + los que ya estaban). `npm run build` anda sin errores ni avisos. El test de migraciones corre la migración nueva en una SQLite vacía, chequea con `alembic check` que coincida con los modelos, baja hasta el principio y vuelve a subir.
+
+## Cambios en el backend (con sus tests)
+
+- **A1:** columna nueva `pedidos.clave_idempotencia` (VARCHAR(64), índice único, puede ser NULL; los pedidos viejos quedan en NULL). Migración `a1c4e9d2b7f3`. `POST /api/tienda/pedidos` acepta el header `Idempotency-Key` (8 a 64 letras, números, `-` o `_`; si viene raro, 400). Si la clave ya se usó devuelve el pedido que había con **200** (el nuevo es 201), **antes** de mirar horario, pausa y límites, así no cuenta para los límites de B4 y no se frena un reintento porque justo pausaron. Si dos reintentos llegan a la vez, el segundo choca con el índice único y devuelve el primero. Un intento que falló (ej. 400 por un producto apagado) no "quema" la clave: se puede reintentar con la misma.
+- **A2:** `POST /api/pagos/{codigo}/preferencia` le pregunta a MP los pagos del pedido antes de crear el link. Si hay uno aprobado lo aplica (el pedido pasa a recibido y suena en la cantina) y devuelve 400 "Este pedido ya está pago"; si hay uno en proceso (`pending`, `in_process`, `authorized`, `in_mediation`) devuelve 400 "Mercado Pago todavía está procesando un pago...". Si MP no contesta, 502 y **no** da el link. `POST /verificar` ahora devuelve además `pago_mp`: `aprobado`, `en_proceso`, `rechazado` o `ninguno`.
+- **B3:** `GET` y `PUT /api/config/pausa` (`{"pausado": true}`) para cantina y admin. El resto de la configuración sigue siendo solo del admin. Los cambios de configuración mandan `{"evento": "config_actualizada"}` al WebSocket del panel.
+- **C1:** `GET /api/panel/caja?fecha=AAAA-MM-DD` y `GET /api/panel/caja/historial?desde=&hasta=` (lógica en `app/services/caja.py`).
+
+## Decisiones que tomé yo
+
+**Parte A**
+- A1: el reintento con la misma clave devuelve 200 (no 201) para que se note que no es nuevo; el front lo trata igual. La clave vive en `sessionStorage` y se borra cuando el pedido entra. Sin https (la wifi del local) `crypto.randomUUID` no existe: armo una igual de random con `crypto.getRandomValues`. Con la señal cortada el mensaje ahora dice "Tocá el botón de nuevo: si ya había entrado, no se duplica".
+- A2: si el pago está en proceso, el seguimiento muestra "Mercado Pago todavía está procesando tu pago", **nunca** ofrece pagar de nuevo y sigue preguntando (cada 5 s los primeros 2 min, después cada 20 s). "Pagar de nuevo" solo aparece si MP dice rechazado o ninguno, y al tocarlo verifica de nuevo antes de ir a MP.
+- A3: la comparación se hace al reconectar y también en la recarga de cada 2 minutos (por las dudas). Solo suenan los pedidos en `recibido` que esa pantalla nunca había visto; si son varios, un solo ding y brillan todos. El cartel "Sin conexión, reconectando..." espera 1,5 s antes de salir para no parpadear al abrir.
+- A4 (item 10, token vencido): lo arreglé en el front sin tocar el backend: si el WebSocket no llega a conectar, se llama a `/api/auth/yo`; si da 401 va al login.
+- A4 (item 6, precios viejos): al entrar al checkout se trae la carta y se repasa el carrito: precios nuevos (con aviso "Actualizamos los precios...") y productos u opciones apagados, que quedan tachados, no suman al total y frenan el Continuar hasta sacarlos. El precio que vale lo sigue calculando el backend.
+- A4 (item 8): la tienda pregunta el estado cada 20 s y al volver a la pestaña (polling, no WebSocket público: es lo más simple y además el horario cambia solo con la hora).
+
+**Parte B**
+- B1: **la cantina tiene una pestaña "Carta"** aunque la lista de la tarea no la nombra, porque B2 pide que la cantina pueda usar el interruptor (bondiola sin stock). Ve la carta con interruptores (productos y opciones), sin poder cambiar precios, ordenar ni editar. La cocina no tiene pestañas. Si alguien entra a una pantalla que no le toca, va a la suya (cocina → `/cocina`, el resto → `/panel`).
+- Rutas nuevas del front: `/panel/carta`, `/panel/caja`, `/panel/config`, `/panel/usuarios`.
+- B2: el editor de producto guarda todo junto con "Guardar": compara con lo que había y manda solo lo que cambió (crear, cambiar o borrar cada grupo y opción). Si algo falla a mitad de camino, vuelve a leer el producto y muestra lo que quedó guardado. Los grupos y opciones no se reordenan (el backend no tiene ruta para eso y la tarea pide ordenar categorías y productos). La foto se ve antes de guardar y se sube al tocar Guardar; se controla que no pase de 5 MB antes de mandarla.
+- B2: en la vista previa del aumento, los agregados que se repiten en cada burger (Extra carne y queso) van en una sola fila con "en 5 productos", como la maqueta. El botón dice la cantidad real que devuelve el backend ("Aplicar a 14 precios").
+- B3: la cantina solo prende y apaga la pausa; el mensaje que ve el cliente lo cambia el admin en Configuración.
+
+**Parte C**
+- La fecha de una jornada es el día en que arrancó: el pedido del viernes a la 1:30 es de la caja del jueves.
+- Pedidos que cuentan: todo menos cancelados y MP sin pagar. **Vendido** = lo cobrado (MP aprobado + efectivo cobrado). **Ticket promedio** = total de los pedidos que cuentan (cobrados o no) / cantidad. **Cancelados** = los cancelados que habían llegado a la cocina; los de MP que nadie pagó van aparte en `mp_sin_pagar`. Un pedido de MP pagado y después cancelado no suma a lo vendido (hay que devolver la plata).
+- Productos más vendidos: agrupados por el nombre guardado en el pedido (así cuentan aunque el producto se haya borrado). Ventas por hora: las 24 horas en el orden de la jornada (6, 7... 5); el gráfico muestra desde la primera hora con ventas hasta la última (mínimo 8 horas).
+- Historial: hasta 366 días por consulta; los días sin pedidos aparecen en cero.
+- La cantina no ve otras fechas (403); en la pantalla no tiene selector de fecha ni historial.
+- "Copiar resumen": si el navegador no deja usar el portapapeles (sin https), muestra el texto para copiarlo a mano.
+
+**Arreglos que encontré de paso**
+- **El primer toque en el panel no andaba:** la barra "Tocá acá para activar el sonido" se iba en el *pointerdown*, todo se corría para arriba y el *click* caía en otro lado (ej. el primer "A la cocina" de la noche no hacía nada). Ahora se va recién cuando terminó el toque.
+- Las piezas comunes del panel (botones, avisos, interruptor, cartel de conexión) pasaron a `src/panel/comunes.jsx` y el encabezado con pestañas a `src/panel/Marco.jsx`.
+
+## Migración nueva en tu base de Docker
+
+Hay una: `a1c4e9d2b7f3` (clave de idempotencia en pedidos). Solo agrega una columna vacía y su índice, no borra nada. En PowerShell:
+
+```powershell
+cd C:\Users\veraa\bruto-app
+git checkout admin
+docker compose up -d
+cd backend
+.\venv\Scripts\Activate.ps1
+alembic current            # tendría que decir 2ff116c7dfc0 (si no, aplicá primero las de la tarea 1)
+alembic upgrade head
+alembic current            # ahora a1c4e9d2b7f3 (head)
+uvicorn app.main:app --reload --port 8001
+```
+
+Si querés ver el SQL antes: `alembic upgrade 2ff116c7dfc0:a1c4e9d2b7f3 --sql`. Para volver atrás: `alembic downgrade 2ff116c7dfc0`.
+
+Y el front, en otra terminal:
+
+```powershell
+cd C:\Users\veraa\bruto-app\frontend
+npm install
+npm run dev
+```
+
+## Qué tenés que probar a mano
+
+1. **Mala señal de verdad:** desde el celu, en "Tus datos", poné el modo avión justo después de tocar Confirmar, sacalo y tocá de nuevo: tiene que haber un solo pedido en el panel.
+2. **Mercado Pago con credenciales de prueba:** pagar con una tarjeta que quede "en proceso" (en MP de prueba, titular `CONT`) y ver que el seguimiento dice que se está procesando y no ofrece pagar de nuevo. Después `APRO` y `OTHE` como siempre.
+3. **Panel con el wifi cortado:** cortar el wifi de la compu de la cantina, hacer dos pedidos desde el celu con datos, volver el wifi: tienen que sonar y brillar. Lo mismo en la tablet de la cocina.
+4. **Primer toque:** abrir el panel, tocar directo "A la cocina" en un pedido: tiene que andar al primer toque.
+5. **Atrás del celu:** abrir una burger y tocar "atrás" del Android: se cierra la hoja y no se sale de la tienda.
+6. **Carta y precios en el celu de Renzo:** cambiar un precio tocándolo, aumento del 10 % a Smash Burgers con redondeo $500 (tiene que dar como la maqueta), crear un producto con foto sacada con la cámara del celu, ordenar con las flechitas.
+7. **Pausa:** que un chico de la cantina pause desde Pedidos y ver en el celu de un cliente que a los ~20 s aparece "Pedidos en pausa" y el botón no deja seguir.
+8. **Horario:** cargar el horario real y mirar el estado de la tienda en Configuración un rato antes y después de abrir y de cerrar (sobre todo después de las 00:00).
+9. **Caja:** al cierre de una noche, comparar la caja con la plata de verdad, y probar "Copiar resumen" pegando en WhatsApp desde el celu (con https en producción; en la wifi local sale el plan B).
+10. **Usuarios:** crear el usuario de cada chico de la cantina y de la cocina, y probar dar de baja a alguien que está logueado (lo saca al toque).
+
+## Revisión del frontend: cómo quedó la lista
+
+| # | Problema | Estado |
+|---|---|---|
+| 1 | Pedido duplicado con mala señal | **Arreglado** (A1) |
+| 2 | Posible doble pago en MP | **Arreglado** (A2) |
+| 3 | Los pedidos que entran durante un corte no suenan | **Arreglado** (A3) |
+| 4 | El "atrás" del celu no cierra la hoja del producto | **Arreglado**: la hoja va en el historial (`?ver=<id>`) |
+| 5 | Se pierde lo cargado en "Tu pedido" | **Arreglado**: modo, ubicación, datos y forma de pago quedan guardados en la pestaña |
+| 6 | Precios viejos en el carrito | **Arreglado**: se repasan con la carta al entrar al checkout |
+| 7 | La vibración de "listo" puede no andar | **A medias**: es un límite del navegador (iPhone no vibra, Chrome pide un toque antes). Sumé que la pestaña diga "¡Listo! #042 · BRUTO"; el cartel verde sale siempre |
+| 8 | Tienda cerrada: se entera recién al confirmar | **Arreglado**: estado en vivo, y en "Tu pedido" el botón dice CANTINA CERRADA / PEDIDOS EN PAUSA y no deja seguir (el pedido queda guardado) |
+| 9 | Producto que se apaga con el pedido en el carrito | **Arreglado**: se marca cuál es, no suma y hay que sacarlo para seguir; si el error llega al confirmar, hay un botón "Revisar mi pedido" |
+| 10 | Token vencido en el panel queda reconectando | **Arreglado**: si el WebSocket no conecta, chequea la sesión y va al login |
+| 11 | A 360 px el logo del panel se corta y el título de la cocina ocupa tres renglones | **Arreglado**: encabezado nuevo con pestañas en una fila aparte en el celu; la cocina dice "Cocina · N" en el celu |
+| 12 | Sin indicador de carga (resumen, botón Recargar) | **Arreglado**: esqueleto en el resumen y "Recargando..." |
+| 13 | Errores que no se muestran (estado de la tienda, resumen) | **Arreglado**: "No pudimos ver si la cantina está abierta" y aviso de números atrasados en el resumen |
+| 14 | No se puede deshacer un "Listo" en la cocina; no hay vista de entregados y cancelados | **Arreglado**: "DESHACER" 10 s después de LISTO en la cocina, y "Entregados y cancelados de hoy" abajo de Pedidos |
+| 15 | "Ver mi pedido" muestra solo el último | **Arreglado**: muestra todos los pedidos en curso del celu (hasta 5, de las últimas 12 hs) |
+| 16 | En compu la intro se ve chica y la cancha corta a los costados | **A medias**: las líneas de la cancha ahora se esfuman a los costados. La escena sigue del tamaño de un celu (agrandarla la cortaría arriba y abajo) |
+| 17 | "Take away" y "Delivery" en inglés | **No lo cambié**: así están en la maqueta y en la carta de BRUTO. Si Renzo prefiere "Para llevar", es cambiar dos textos en `Checkout.jsx` y el panel |
+
+Lo que sigue dependiendo de Renzo (no se tocó): canchas para los QR, horario real, link de PedidosYa, precio de la opción veggie, datos de la ticketera y la cuenta de MP de producción. Todo eso ahora se carga desde el panel salvo las canchas (`src/config.js`), la ticketera y MP (`.env`).
+
+Nota que sigue igual: las migraciones usan `now()` de Postgres, así que una SQLite armada con `alembic upgrade` no deja crear pedidos (no afecta a Postgres ni a los tests). Para probar el front armé la base con `create_all`, como en la tarea 2.
